@@ -70,6 +70,132 @@ The project analyzes the `plants_and_bees.csv` dataset containing:
    pip install -e .
    ```
 
+3. **Set up environment**
+
+   ```bash
+   cp env.example .env
+   # Edit .env with your configuration
+   ```
+
+4. **Initialize the database**
+
+   ```bash
+   python -m pollinexus.cli init-db
+   ```
+
+5. **Run the API server**
+
+   ```bash
+   uvicorn pollinexus.api.main:app --reload
+   ```
+
+6. **Access the API**
+   - Interactive docs: http://localhost:8000/docs
+   - API base URL: http://localhost:8000/api/v1
+
+### API Usage Examples
+
+#### Dataset Management
+
+**Upload a dataset:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/datasets/" \
+  -F "name=Plants and Bees Dataset" \
+  -F "description=Sample pollinator data from environmental study" \
+  -F "file=@plants_and_bees.csv"
+```
+
+**List datasets:**
+```bash
+curl "http://localhost:8000/api/v1/datasets/?skip=0&limit=10"
+```
+
+**Get dataset info:**
+```bash
+curl "http://localhost:8000/api/v1/datasets/1/info"
+```
+
+#### Analysis Operations
+
+**Start bee preference analysis:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/analysis/bee-preferences/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_id": 1,
+    "target_column": "nonnative_bee",
+    "model_type": "random_forest",
+    "test_size": 0.2
+  }'
+```
+
+**Check analysis job status:**
+```bash
+curl "http://localhost:8000/api/v1/analysis/jobs/1/status"
+```
+
+**Get analysis results:**
+```bash
+curl "http://localhost:8000/api/v1/analysis/jobs/1/results"
+```
+
+#### Visualization Operations
+
+**Create bee distribution plot:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/visualizations/bee-distribution/?dataset_id=1" \
+  -H "Content-Type: application/json" \
+  -d '{"top_n": 20, "include_percentages": true}'
+```
+
+**Create batch visualizations:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/visualizations/batch/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_id": 1,
+    "plot_types": ["bee_distribution", "seasonal_patterns", "site_comparison"],
+    "parameters": {
+      "top_n": 20,
+      "include_trends": true
+    }
+  }'
+```
+
+**Download visualization:**
+```bash
+curl "http://localhost:8000/api/v1/visualizations/1703123456/download?task_id=abc123-def456"
+```
+
+#### Complete Workflow Example
+
+```bash
+# 1. Upload dataset
+curl -X POST "http://localhost:8000/api/v1/datasets/" \
+  -F "name=Plants and Bees Dataset" \
+  -F "description=Sample pollinator data" \
+  -F "file=@plants_and_bees.csv"
+
+# 2. Start analysis
+curl -X POST "http://localhost:8000/api/v1/analysis/bee-preferences/" \
+  -H "Content-Type: application/json" \
+  -d '{"dataset_id": 1, "target_column": "nonnative_bee", "model_type": "random_forest"}'
+
+# 3. Check status
+curl "http://localhost:8000/api/v1/analysis/jobs/1/status"
+
+# 4. Get results
+curl "http://localhost:8000/api/v1/analysis/jobs/1/results"
+
+# 5. Create visualization
+curl -X POST "http://localhost:8000/api/v1/visualizations/bee-distribution/?dataset_id=1"
+
+# 6. Download visualization
+curl "http://localhost:8000/api/v1/visualizations/1703123456/download?task_id=abc123-def456"
+```
+
+### Jupyter Notebook Analysis
+
 3. **Launch Jupyter**
 
    ```bash
@@ -86,45 +212,87 @@ The project analyzes the `plants_and_bees.csv` dataset containing:
 pollinexus/
 ├── README.md                 # This file
 ├── pyproject.toml           # Project configuration
+├── env.example              # Environment variables template
 ├── assets/                  # Static assets (images, etc.)
 ├── docs/                    # Documentation
 │   ├── LICENSE.md          # Project license
 │   ├── CONTRIBUTING.md     # Contribution guidelines
 │   ├── CODE_OF_CONDUCT.md  # Community standards
-│   └── API.md              # API documentation
+│   ├── API.md              # API documentation
+│   ├── CHANGELOG.md        # Project changelog
+│   └── README.md           # Documentation index
 ├── src/                     # Source code
 │   └── pollinexus/         # Main package
+│       ├── __init__.py     # Package initialization
+│       ├── cli.py          # Command-line interface
+│       ├── api/            # FastAPI application
+│       │   ├── main.py     # Main API application
+│       │   ├── models/     # Request/response models
+│       │   └── routes/     # API route handlers
+│       ├── core/           # Core functionality
+│       │   ├── config.py   # Configuration management
+│       │   ├── database.py # Database connection
+│       │   ├── logging.py  # Logging configuration
+│       │   ├── metrics.py  # Performance monitoring
+│       │   └── error_tracking.py # Error handling
+│       ├── models/         # Database models
+│       ├── services/       # Business logic services
+│       │   ├── data_service.py      # Data processing
+│       │   ├── database_service.py  # Database operations
+│       │   └── duckdb_service.py    # DuckDB operations
+│       ├── tasks/          # Celery background tasks
+│       │   ├── celery_app.py        # Celery configuration
+│       │   ├── analysis.py          # Analysis tasks
+│       │   ├── visualization.py     # Visualization tasks
+│       │   └── data_processing.py   # Data processing tasks
+│       └── utils/          # Utility functions
 ├── test/                    # Test suite
 └── todo/                    # Analysis files
     ├── project.ipynb       # Main analysis notebook
-    └── plants_and_bees.csv # Dataset
+    ├── plants_and_bees.csv # Dataset
+    ├── DEVELOPMENT_PLAN.md # Development roadmap
+    └── IMMEDIATE_TASKS.md  # Current tasks
 ```
 
 ## 🔬 Analysis Components
 
-### 1. Data Cleaning
+### 1. Data Management
 
-- Convert columns to appropriate data types
-- Handle missing values
-- Validate data integrity
+- **Dataset Upload & Validation**: Multi-format support (CSV, Excel, Parquet)
+- **Data Cleaning**: Automated cleaning and preprocessing
+- **Data Validation**: Comprehensive validation with error reporting
+- **Dataset Health Monitoring**: Real-time health checks and status monitoring
 
 ### 2. Machine Learning Analysis
 
-- Train models to identify plant preferences
-- Compare native vs non-native bee species behavior
-- Feature importance analysis
+- **Bee Preference Analysis**: ML models to identify plant preferences
+- **Plant Recommendations**: Intelligent recommendation system
+- **Seasonal Analysis**: Pattern analysis and trend identification
+- **Site Comparison**: Cross-site analysis and ranking
+- **Feature Importance**: Automated feature importance analysis
 
 ### 3. Visualization
 
-- Bee and plant species distribution charts
-- Seasonal patterns analysis
-- Site comparison visualizations
+- **Bee Distribution Plots**: Interactive species distribution charts
+- **Seasonal Patterns**: Multi-panel seasonal analysis
+- **Site Comparison**: Cross-site comparison visualizations
+- **Interactive Dashboards**: Comprehensive data exploration tools
+- **Batch Visualization**: Multiple plot generation
 
-### 4. Recommendations
+### 4. API & Services
 
-- Top 3 plant species for native bee support
-- Conservation strategy recommendations
-- Implementation guidelines
+- **RESTful API**: Complete REST API with comprehensive endpoints
+- **Background Processing**: Celery-based asynchronous task processing
+- **Real-time Monitoring**: Job status tracking and progress monitoring
+- **File Management**: Automated file handling and cleanup
+- **Comprehensive Logging**: OpenTelemetry-friendly logging and monitoring
+
+### 5. Recommendations
+
+- **Plant Recommendations**: Top plant species for native bee support
+- **Conservation Strategies**: Evidence-based conservation recommendations
+- **Implementation Guidelines**: Practical implementation guidance
+- **Environmental Impact Assessment**: Impact analysis and reporting
 
 ## 🤝 Contributing
 
