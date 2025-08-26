@@ -281,7 +281,1014 @@
 
 ## 📋 Sprint 2: Core Services (Week 2)
 
-### Day 8-10: Data Processing Services
+### Day 8-9: Logging & Monitoring Infrastructure
+
+#### Task 2.0: Structured Logging Setup
+
+**Priority**: P0 | **Estimated Time**: 4 hours
+
+- [ ] **Create structured logging configuration**
+
+  ```python
+  # src/pollinexus/core/logging.py
+  import logging
+  import json
+  import sys
+  from datetime import datetime
+  from typing import Any, Dict, Optional
+  from contextvars import ContextVar
+  import uuid
+  
+  # Context variables for request tracking
+  request_id: ContextVar[Optional[str]] = ContextVar('request_id', default=None)
+  user_id: ContextVar[Optional[str]] = ContextVar('user_id', default=None)
+  correlation_id: ContextVar[Optional[str]] = ContextVar('correlation_id', default=None)
+  
+  class StructuredFormatter(logging.Formatter):
+      """JSON structured formatter for OpenTelemetry compatibility."""
+      
+      def format(self, record: logging.LogRecord) -> str:
+          log_entry = {
+              'timestamp': datetime.utcnow().isoformat() + 'Z',
+              'level': record.levelname,
+              'logger': record.name,
+              'message': record.getMessage(),
+              'module': record.module,
+              'function': record.funcName,
+              'line': record.lineno,
+              'request_id': request_id.get(),
+              'user_id': user_id.get(),
+              'correlation_id': correlation_id.get(),
+              'thread_id': record.thread,
+              'process_id': record.process
+          }
+          
+          # Add exception info if present
+          if record.exc_info:
+              log_entry['exception'] = self.formatException(record.exc_info)
+          
+          # Add extra fields
+          if hasattr(record, 'extra_fields'):
+              log_entry.update(record.extra_fields)
+          
+          return json.dumps(log_entry)
+  
+  class StructuredLogger:
+      """Structured logger with OpenTelemetry-friendly output."""
+      
+      def __init__(self, name: str):
+          self.logger = logging.getLogger(name)
+          self.logger.setLevel(logging.INFO)
+          
+          # Add JSON formatter
+          handler = logging.StreamHandler(sys.stdout)
+          handler.setFormatter(StructuredFormatter())
+          self.logger.addHandler(handler)
+      
+      def _log(self, level: int, message: str, **kwargs):
+          """Internal logging method with extra fields."""
+          extra_fields = {
+              'component': self.logger.name,
+              'timestamp': datetime.utcnow().isoformat() + 'Z'
+          }
+          extra_fields.update(kwargs)
+          
+          record = self.logger.makeRecord(
+              self.logger.name, level, '', 0, message, (), None
+          )
+          record.extra_fields = extra_fields
+          self.logger.handle(record)
+      
+      def debug(self, message: str, **kwargs):
+          self._log(logging.DEBUG, message, **kwargs)
+      
+      def info(self, message: str, **kwargs):
+          self._log(logging.INFO, message, **kwargs)
+      
+      def warning(self, message: str, **kwargs):
+          self._log(logging.WARNING, message, **kwargs)
+      
+      def error(self, message: str, **kwargs):
+          self._log(logging.ERROR, message, **kwargs)
+      
+      def critical(self, message: str, **kwargs):
+          self._log(logging.CRITICAL, message, **kwargs)
+  
+  # Global logger instance
+  logger = StructuredLogger('pollinexus')
+  ```
+
+- [ ] **Create logging middleware for FastAPI**
+
+  ```python
+  # src/pollinexus/api/middleware/logging.py
+  from fastapi import Request, Response
+  import time
+  import uuid
+  from typing import Callable
+  from ...core.logging import logger, request_id, user_id, correlation_id
+  
+  async def logging_middleware(request: Request, call_next: Callable) -> Response:
+      """Middleware for structured request/response logging."""
+      
+      # Generate request tracking IDs
+      req_id = str(uuid.uuid4())
+      corr_id = request.headers.get('X-Correlation-ID', str(uuid.uuid4()))
+      
+      # Set context variables
+      request_id.set(req_id)
+      correlation_id.set(corr_id)
+      
+      # Extract user info (if authentication is implemented)
+      user = getattr(request.state, 'user', None)
+      if user:
+          user_id.set(str(user.id))
+      
+      # Log request start
+      start_time = time.time()
+      logger.info(
+          "Request started",
+          method=request.method,
+          url=str(request.url),
+          client_ip=request.client.host if request.client else None,
+          user_agent=request.headers.get('user-agent'),
+          request_id=req_id,
+          correlation_id=corr_id
+      )
+      
+      try:
+          response = await call_next(request)
+          
+          # Log successful response
+          process_time = time.time() - start_time
+          logger.info(
+              "Request completed",
+              method=request.method,
+              url=str(request.url),
+              status_code=response.status_code,
+              process_time=process_time,
+              request_id=req_id,
+              correlation_id=corr_id
+          )
+          
+          # Add headers for tracking
+          response.headers["X-Request-ID"] = req_id
+          response.headers["X-Correlation-ID"] = corr_id
+          response.headers["X-Process-Time"] = str(process_time)
+          
+          return response
+          
+      except Exception as e:
+          # Log error response
+          process_time = time.time() - start_time
+          logger.error(
+              "Request failed",
+              method=request.method,
+              url=str(request.url),
+              error=str(e),
+              process_time=process_time,
+              request_id=req_id,
+              correlation_id=corr_id
+          )
+          raise
+      finally:
+          # Clear context variables
+          request_id.set(None)
+          correlation_id.set(None)
+          user_id.set(None)
+  ```
+
+#### Task 2.1: Service-Level Logging
+
+**Priority**: P0 | **Estimated Time**: 3 hours
+
+- [ ] **Update DuckDBService with comprehensive logging**
+
+  ```python
+  # src/pollinexus/services/duckdb_service.py
+  # Add to existing DuckDBService class
+  
+  from ..core.logging import logger
+  
+  def load_csv_direct(self, csv_path: str, table_name: str = None) -> str:
+      """Load CSV file directly into DuckDB with logging."""
+      
+      logger.info(
+          "Starting CSV load operation",
+          csv_path=csv_path,
+          table_name=table_name,
+          operation="csv_load"
+      )
+      
+      try:
+          if table_name is None:
+              table_name = Path(csv_path).stem
+          
+          # Create table from CSV
+          query = f"""
+          CREATE TABLE IF NOT EXISTS {table_name} AS
+          SELECT * FROM read_csv_auto('{csv_path}')
+          """
+          
+          logger.debug(
+              "Executing CSV load query",
+              query=query,
+              table_name=table_name
+          )
+          
+          self.connection.execute(query)
+          
+          # Get row count
+          count = self.connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+          
+          logger.info(
+              "CSV load completed successfully",
+              csv_path=csv_path,
+              table_name=table_name,
+              row_count=count,
+              operation="csv_load"
+          )
+          
+          return table_name
+          
+      except Exception as e:
+          logger.error(
+              "CSV load failed",
+              csv_path=csv_path,
+              table_name=table_name,
+              error=str(e),
+              operation="csv_load"
+          )
+          raise
+  
+  def analyze_bee_preferences(self, table_name: str) -> Dict[str, Any]:
+      """Analyze bee preferences with comprehensive logging."""
+      
+      logger.info(
+          "Starting bee preference analysis",
+          table_name=table_name,
+          operation="bee_analysis"
+      )
+      
+      try:
+          # Log analysis steps
+          logger.debug("Analyzing bee species distribution", table_name=table_name)
+          bee_analysis_query = f"""
+          SELECT
+              bee_species,
+              COUNT(*) as observation_count,
+              AVG(bees_num) as avg_bees_per_observation,
+              SUM(bees_num) as total_bees,
+              AVG(CASE WHEN nonnative_bee = 0 THEN 1.0 ELSE 0.0 END) as native_bee_ratio
+          FROM {table_name}
+          WHERE bee_species IS NOT NULL
+          GROUP BY bee_species
+          ORDER BY total_bees DESC
+          """
+          
+          bee_analysis = self.query_to_dataframe(bee_analysis_query)
+          
+          logger.debug(
+              "Bee species analysis completed",
+              table_name=table_name,
+              species_count=len(bee_analysis)
+          )
+          
+          # Continue with other analyses...
+          logger.debug("Analyzing plant preferences", table_name=table_name)
+          plant_analysis = self.query_to_dataframe(plant_analysis_query)
+          
+          logger.debug("Analyzing seasonal patterns", table_name=table_name)
+          seasonal_analysis = self.query_to_dataframe(seasonal_analysis_query)
+          
+          logger.debug("Analyzing site comparisons", table_name=table_name)
+          site_analysis = self.query_to_dataframe(site_analysis_query)
+          
+          # Prepare results
+          results = {
+              'bee_species_analysis': bee_analysis.to_dict('records'),
+              'plant_species_analysis': plant_analysis.to_dict('records'),
+              'seasonal_analysis': seasonal_analysis.to_dict('records'),
+              'site_analysis': site_analysis.to_dict('records'),
+              'summary': {
+                  'total_observations': bee_analysis['observation_count'].sum(),
+                  'total_bees': bee_analysis['total_bees'].sum(),
+                  'unique_bee_species': len(bee_analysis),
+                  'unique_plant_species': len(plant_analysis)
+              }
+          }
+          
+          logger.info(
+              "Bee preference analysis completed successfully",
+              table_name=table_name,
+              total_observations=results['summary']['total_observations'],
+              total_bees=results['summary']['total_bees'],
+              unique_bee_species=results['summary']['unique_bee_species'],
+              unique_plant_species=results['summary']['unique_plant_species'],
+              operation="bee_analysis"
+          )
+          
+          return results
+          
+      except Exception as e:
+          logger.error(
+              "Bee preference analysis failed",
+              table_name=table_name,
+              error=str(e),
+              operation="bee_analysis"
+          )
+          raise
+  ```
+
+#### Task 2.2: Database Service Logging
+
+**Priority**: P0 | **Estimated Time**: 2 hours
+
+- [ ] **Update DatabaseService with operation logging**
+
+  ```python
+  # src/pollinexus/services/database_service.py
+  # Add to existing DatabaseService class
+  
+  from ..core.logging import logger
+  
+  def create_dataset(self, dataset: DatasetCreate) -> Dataset:
+      """Create a new dataset record with logging."""
+      
+      logger.info(
+          "Creating new dataset",
+          dataset_name=dataset.name,
+          file_path=dataset.file_path,
+          operation="dataset_create"
+      )
+      
+      try:
+          db_dataset = Dataset(
+              name=dataset.name,
+              description=dataset.description,
+              file_path=dataset.file_path
+          )
+          self.db.add(db_dataset)
+          self.db.commit()
+          self.db.refresh(db_dataset)
+          
+          logger.info(
+              "Dataset created successfully",
+              dataset_id=db_dataset.id,
+              dataset_name=dataset.name,
+              operation="dataset_create"
+          )
+          
+          return db_dataset
+          
+      except Exception as e:
+          logger.error(
+              "Dataset creation failed",
+              dataset_name=dataset.name,
+              error=str(e),
+              operation="dataset_create"
+          )
+          self.db.rollback()
+          raise
+  
+  def update_job_status(self, job_id: int, status: str, results: Optional[dict] = None) -> bool:
+      """Update job status with logging."""
+      
+      logger.info(
+          "Updating job status",
+          job_id=job_id,
+          new_status=status,
+          operation="job_status_update"
+      )
+      
+      try:
+          job = self.get_analysis_job(job_id)
+          if job:
+              job.status = status
+              if results:
+                  job.results = results
+              if status in ['completed', 'failed']:
+                  job.completed_at = datetime.utcnow()
+              self.db.commit()
+              
+              logger.info(
+                  "Job status updated successfully",
+                  job_id=job_id,
+                  status=status,
+                  operation="job_status_update"
+              )
+              return True
+          else:
+              logger.warning(
+                  "Job not found for status update",
+                  job_id=job_id,
+                  operation="job_status_update"
+              )
+              return False
+              
+      except Exception as e:
+          logger.error(
+              "Job status update failed",
+              job_id=job_id,
+              error=str(e),
+              operation="job_status_update"
+          )
+          self.db.rollback()
+          raise
+  ```
+
+### Day 10-11: Celery Task Logging
+
+#### Task 2.3: Celery Task Monitoring
+
+**Priority**: P0 | **Estimated Time**: 3 hours
+
+- [ ] **Update Celery tasks with comprehensive logging**
+
+  ```python
+  # src/pollinexus/tasks/analysis.py
+  # Add to existing analysis tasks
+  
+  from ..core.logging import logger, correlation_id
+  import uuid
+  
+  @celery_app.task(bind=True)
+  def analyze_bee_preferences(self, dataset_id: int, parameters: Dict[str, Any] = None):
+      """Analyze bee species preferences with comprehensive logging."""
+      
+      # Generate correlation ID for task tracking
+      task_correlation_id = str(uuid.uuid4())
+      correlation_id.set(task_correlation_id)
+      
+      logger.info(
+          "Starting bee preference analysis task",
+          task_id=self.request.id,
+          dataset_id=dataset_id,
+          parameters=parameters,
+          correlation_id=task_correlation_id,
+          operation="celery_bee_analysis"
+      )
+      
+      try:
+          # Update task status
+          current_task.update_state(
+              state='PROGRESS',
+              meta={'status': 'Loading dataset', 'correlation_id': task_correlation_id}
+          )
+          
+          logger.debug(
+              "Loading dataset for analysis",
+              task_id=self.request.id,
+              dataset_id=dataset_id,
+              correlation_id=task_correlation_id
+          )
+          
+          # Get dataset
+          db = SessionLocal()
+          db_service = DatabaseService(db)
+          dataset = db_service.get_dataset(dataset_id)
+          
+          if not dataset:
+              error_msg = f"Dataset {dataset_id} not found"
+              logger.error(
+                  "Dataset not found for analysis",
+                  task_id=self.request.id,
+                  dataset_id=dataset_id,
+                  correlation_id=task_correlation_id
+              )
+              raise ValueError(error_msg)
+          
+          # Load and clean data
+          data_service = DataService()
+          data = data_service.load_dataset(dataset.file_path)
+          cleaned_data = data_service.clean_dataset(data)
+          
+          logger.info(
+              "Dataset loaded and cleaned",
+              task_id=self.request.id,
+              dataset_id=dataset_id,
+              original_rows=len(data),
+              cleaned_rows=len(cleaned_data),
+              correlation_id=task_correlation_id
+          )
+          
+          current_task.update_state(
+              state='PROGRESS',
+              meta={'status': 'Preparing features', 'correlation_id': task_correlation_id}
+          )
+          
+          # Continue with ML analysis...
+          logger.debug(
+              "Preparing features for ML",
+              task_id=self.request.id,
+              dataset_id=dataset_id,
+              correlation_id=task_correlation_id
+          )
+          
+          # ... (rest of the analysis logic with logging)
+          
+          logger.info(
+              "Bee preference analysis completed successfully",
+              task_id=self.request.id,
+              dataset_id=dataset_id,
+              accuracy=accuracy,
+              correlation_id=task_correlation_id,
+              operation="celery_bee_analysis"
+          )
+          
+          return results
+          
+      except Exception as e:
+          logger.error(
+              "Bee preference analysis task failed",
+              task_id=self.request.id,
+              dataset_id=dataset_id,
+              error=str(e),
+              correlation_id=task_correlation_id,
+              operation="celery_bee_analysis"
+          )
+          
+          # Update job status to failed
+          db_service.update_job_status(self.request.id, 'failed', {'error': str(e)})
+          raise
+      finally:
+          db.close()
+          correlation_id.set(None)
+  ```
+
+#### Task 2.4: API Route Logging
+
+**Priority**: P0 | **Estimated Time**: 2 hours
+
+- [ ] **Add comprehensive logging to all API routes**
+
+  ```python
+  # src/pollinexus/api/routes/datasets.py
+  # Add to existing dataset routes
+  
+  from ...core.logging import logger
+  
+  @router.post("/datasets/", response_model=DatasetResponse)
+  async def create_dataset(
+      name: str,
+      description: str = None,
+      file: UploadFile = File(...),
+      db: Session = Depends(get_db)
+  ):
+      """Upload and create a new dataset with logging."""
+      
+      logger.info(
+          "Dataset upload request received",
+          dataset_name=name,
+          file_name=file.filename,
+          file_size=file.size,
+          operation="dataset_upload"
+      )
+      
+      try:
+          # Validate file type
+          if not file.filename.endswith('.csv'):
+              logger.warning(
+                  "Invalid file type attempted",
+                  file_name=file.filename,
+                  operation="dataset_upload"
+              )
+              raise HTTPException(status_code=400, detail="Only CSV files are supported")
+          
+          # Create upload directory
+          upload_dir = Path("uploads")
+          upload_dir.mkdir(exist_ok=True)
+          
+          # Save file
+          file_path = upload_dir / file.filename
+          with open(file_path, "wb") as buffer:
+              shutil.copyfileobj(file.file, buffer)
+          
+          logger.debug(
+              "File saved successfully",
+              file_path=str(file_path),
+              operation="dataset_upload"
+          )
+          
+          # Validate dataset
+          data_service = DataService()
+          try:
+              data = data_service.load_dataset(str(file_path))
+              validation = data_service.validate_dataset(data)
+              
+              logger.info(
+                  "Dataset validation completed",
+                  validation_result=validation['is_valid'],
+                  errors=validation['errors'],
+                  warnings=validation['warnings'],
+                  operation="dataset_upload"
+              )
+              
+              if not validation['is_valid']:
+                  os.remove(file_path)
+                  raise HTTPException(
+                      status_code=400, 
+                      detail=f"Dataset validation failed: {validation['errors']}"
+                  )
+          except Exception as e:
+              os.remove(file_path)
+              logger.error(
+                  "Dataset validation failed",
+                  error=str(e),
+                  operation="dataset_upload"
+              )
+              raise HTTPException(status_code=400, detail=f"Error loading dataset: {str(e)}")
+          
+          # Create dataset record
+          db_service = DatabaseService(db)
+          dataset_create = DatasetCreate(
+              name=name,
+              description=description,
+              file_path=str(file_path)
+          )
+          dataset = db_service.create_dataset(dataset_create)
+          
+          logger.info(
+              "Dataset created successfully via API",
+              dataset_id=dataset.id,
+              dataset_name=name,
+              operation="dataset_upload"
+          )
+          
+          return dataset
+          
+      except HTTPException:
+          raise
+      except Exception as e:
+          logger.error(
+              "Unexpected error in dataset upload",
+              error=str(e),
+              operation="dataset_upload"
+          )
+          raise HTTPException(status_code=500, detail="Internal server error")
+  ```
+
+#### Task 2.5: CLI Command Logging
+
+**Priority**: P1 | **Estimated Time**: 2 hours
+
+- [ ] **Add logging to CLI commands**
+
+  ```python
+  # src/pollinexus/cli.py
+  # Add to existing CLI commands
+  
+  from .core.logging import logger
+  
+  @click.command()
+  @click.argument('csv_path', type=click.Path(exists=True))
+  @click.option('--table-name', help='Table name for the data')
+  def load_csv(csv_path, table_name):
+      """Load CSV file directly into DuckDB with logging."""
+      
+      logger.info(
+          "CLI CSV load command executed",
+          csv_path=csv_path,
+          table_name=table_name,
+          operation="cli_csv_load"
+      )
+      
+      try:
+          with DuckDBService() as db_service:
+              result_table = db_service.load_csv_direct(csv_path, table_name)
+              
+              logger.info(
+                  "CLI CSV load completed successfully",
+                  csv_path=csv_path,
+                  table_name=result_table,
+                  operation="cli_csv_load"
+              )
+              
+              click.echo(f"Successfully loaded {csv_path} into table '{result_table}'")
+              
+      except Exception as e:
+          logger.error(
+              "CLI CSV load failed",
+              csv_path=csv_path,
+              error=str(e),
+              operation="cli_csv_load"
+          )
+          click.echo(f"Error loading CSV: {e}", err=True)
+          sys.exit(1)
+  ```
+
+#### Task 2.6: Performance Monitoring
+
+**Priority**: P1 | **Estimated Time**: 3 hours
+
+- [ ] **Add performance metrics logging**
+
+  ```python
+  # src/pollinexus/core/metrics.py
+  import time
+  from functools import wraps
+  from typing import Dict, Any, Callable
+  from .logging import logger
+  
+  class PerformanceMonitor:
+      """Monitor and log performance metrics."""
+      
+      def __init__(self):
+          self.metrics = {}
+      
+      def log_operation_time(self, operation: str, duration: float, **kwargs):
+          """Log operation execution time."""
+          logger.info(
+              "Operation performance",
+              operation=operation,
+              duration=duration,
+              **kwargs
+          )
+      
+      def log_memory_usage(self, operation: str, memory_mb: float, **kwargs):
+          """Log memory usage for operations."""
+          logger.info(
+              "Memory usage",
+              operation=operation,
+              memory_mb=memory_mb,
+              **kwargs
+          )
+      
+      def log_database_query_time(self, query: str, duration: float, **kwargs):
+          """Log database query performance."""
+          logger.debug(
+              "Database query performance",
+              query=query[:100] + "..." if len(query) > 100 else query,
+              duration=duration,
+              **kwargs
+          )
+  
+  # Global performance monitor
+  performance_monitor = PerformanceMonitor()
+  
+  def monitor_performance(operation: str):
+      """Decorator to monitor function performance."""
+      def decorator(func: Callable) -> Callable:
+          @wraps(func)
+          def wrapper(*args, **kwargs):
+              start_time = time.time()
+              start_memory = get_memory_usage()
+              
+              try:
+                  result = func(*args, **kwargs)
+                  
+                  duration = time.time() - start_time
+                  end_memory = get_memory_usage()
+                  memory_used = end_memory - start_memory
+                  
+                  performance_monitor.log_operation_time(
+                      operation=operation,
+                      duration=duration,
+                      memory_mb=memory_used
+                  )
+                  
+                  return result
+                  
+              except Exception as e:
+                  duration = time.time() - start_time
+                  logger.error(
+                      "Operation failed",
+                      operation=operation,
+                      duration=duration,
+                      error=str(e)
+                  )
+                  raise
+          
+          return wrapper
+      return decorator
+  
+  def get_memory_usage() -> float:
+      """Get current memory usage in MB."""
+      import psutil
+      process = psutil.Process()
+      return process.memory_info().rss / 1024 / 1024  # Convert to MB
+  ```
+
+#### Task 2.7: Error Tracking and Alerting
+
+**Priority**: P1 | **Estimated Time**: 2 hours
+
+- [ ] **Create error tracking and alerting system**
+
+  ```python
+  # src/pollinexus/core/error_tracking.py
+  from typing import Dict, Any, Optional
+  from .logging import logger
+  import traceback
+  
+  class ErrorTracker:
+      """Track and categorize errors for monitoring."""
+      
+      def __init__(self):
+          self.error_counts = {}
+          self.error_thresholds = {
+              'database_connection': 5,
+              'file_upload': 10,
+              'analysis_failure': 3,
+              'validation_error': 20
+          }
+      
+      def track_error(self, error_type: str, error: Exception, context: Dict[str, Any] = None):
+          """Track an error occurrence."""
+          
+          # Increment error count
+          self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
+          
+          # Log error with context
+          logger.error(
+              "Error tracked",
+              error_type=error_type,
+              error_message=str(error),
+              error_count=self.error_counts[error_type],
+              context=context or {},
+              stack_trace=traceback.format_exc()
+          )
+          
+          # Check if threshold exceeded
+          threshold = self.error_thresholds.get(error_type, 10)
+          if self.error_counts[error_type] >= threshold:
+              self._trigger_alert(error_type, error, context)
+      
+      def _trigger_alert(self, error_type: str, error: Exception, context: Dict[str, Any]):
+          """Trigger alert for error threshold exceeded."""
+          
+          logger.critical(
+              "Error threshold exceeded - alert triggered",
+              error_type=error_type,
+              error_count=self.error_counts[error_type],
+              threshold=self.error_thresholds.get(error_type, 10),
+              error_message=str(error),
+              context=context or {}
+          )
+          
+          # TODO: Integrate with external alerting system (Slack, email, etc.)
+          # For now, just log the alert
+      
+      def get_error_summary(self) -> Dict[str, Any]:
+          """Get summary of tracked errors."""
+          return {
+              'error_counts': self.error_counts,
+              'thresholds': self.error_thresholds,
+              'total_errors': sum(self.error_counts.values())
+          }
+  
+  # Global error tracker
+  error_tracker = ErrorTracker()
+  
+  def track_errors(error_type: str):
+      """Decorator to automatically track errors."""
+      def decorator(func):
+          def wrapper(*args, **kwargs):
+              try:
+                  return func(*args, **kwargs)
+              except Exception as e:
+                  context = {
+                      'function': func.__name__,
+                      'args': str(args),
+                      'kwargs': str(kwargs)
+                  }
+                  error_tracker.track_error(error_type, e, context)
+                  raise
+          return wrapper
+      return decorator
+  ```
+
+#### Task 2.8: Health Check Monitoring
+
+**Priority**: P1 | **Estimated Time**: 2 hours
+
+- [ ] **Enhance health check endpoints with monitoring**
+
+  ```python
+  # src/pollinexus/api/health.py
+  from fastapi import APIRouter, Depends
+  from sqlalchemy.orm import Session
+  from ..core.database import get_db
+  from ..core.logging import logger
+  from ..core.metrics import performance_monitor
+  from ..core.error_tracking import error_tracker
+  import time
+  import psutil
+  
+  router = APIRouter()
+  
+  @router.get("/health")
+  async def health_check():
+      """Enhanced health check with system metrics."""
+      
+      start_time = time.time()
+      
+      try:
+          # Basic system metrics
+          cpu_percent = psutil.cpu_percent(interval=1)
+          memory = psutil.virtual_memory()
+          disk = psutil.disk_usage('/')
+          
+          # Database health check
+          db_status = "healthy"
+          try:
+              db = next(get_db())
+              db.execute("SELECT 1")
+              db.close()
+          except Exception as e:
+              db_status = "unhealthy"
+              logger.error("Database health check failed", error=str(e))
+          
+          # Celery health check
+          celery_status = "healthy"
+          try:
+              # TODO: Implement Celery health check
+              pass
+          except Exception as e:
+              celery_status = "unhealthy"
+              logger.error("Celery health check failed", error=str(e))
+          
+          # Error summary
+          error_summary = error_tracker.get_error_summary()
+          
+          health_data = {
+              "status": "healthy" if db_status == "healthy" and celery_status == "healthy" else "degraded",
+              "timestamp": time.time(),
+              "version": "0.1.0",
+              "services": {
+                  "database": db_status,
+                  "celery": celery_status
+              },
+              "system": {
+                  "cpu_percent": cpu_percent,
+                  "memory_percent": memory.percent,
+                  "disk_percent": disk.percent
+              },
+              "errors": error_summary,
+              "response_time": time.time() - start_time
+          }
+          
+          logger.info(
+              "Health check completed",
+              status=health_data["status"],
+              response_time=health_data["response_time"],
+              cpu_percent=cpu_percent,
+              memory_percent=memory.percent
+          )
+          
+          return health_data
+          
+      except Exception as e:
+          logger.error("Health check failed", error=str(e))
+          return {
+              "status": "unhealthy",
+              "timestamp": time.time(),
+              "error": str(e)
+          }
+  
+  @router.get("/metrics")
+  async def get_metrics():
+      """Get system metrics for monitoring."""
+      
+      try:
+          # System metrics
+          cpu_percent = psutil.cpu_percent(interval=1)
+          memory = psutil.virtual_memory()
+          disk = psutil.disk_usage('/')
+          
+          # Process metrics
+          process = psutil.Process()
+          process_memory = process.memory_info().rss / 1024 / 1024  # MB
+          
+          metrics = {
+              "timestamp": time.time(),
+              "system": {
+                  "cpu_percent": cpu_percent,
+                  "memory_percent": memory.percent,
+                  "memory_available_mb": memory.available / 1024 / 1024,
+                  "disk_percent": disk.percent,
+                  "disk_free_mb": disk.free / 1024 / 1024
+              },
+              "process": {
+                  "memory_mb": process_memory,
+                  "cpu_percent": process.cpu_percent(),
+                  "threads": process.num_threads(),
+                  "open_files": len(process.open_files()),
+                  "connections": len(process.connections())
+              },
+              "errors": error_tracker.get_error_summary()
+          }
+          
+          logger.debug("Metrics collected", metrics=metrics)
+          
+          return metrics
+          
+      except Exception as e:
+          logger.error("Metrics collection failed", error=str(e))
+          raise
+  ```
+
+### Day 12-14: Data Processing Services
 
 #### Task 2.1: Data Service Implementation
 
