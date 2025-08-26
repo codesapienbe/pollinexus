@@ -60,7 +60,7 @@ The project analyzes the `plants_and_bees.csv` dataset containing:
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/your-username/pollinexus.git
+   git clone https://github.com/codesapienbe/pollinexus.git
    cd pollinexus
    ```
 
