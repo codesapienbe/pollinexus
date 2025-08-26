@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Database settings
-    database_url: str = "postgresql://user:password@localhost/pollinexus"
+    database_url: str = "duckdb:///pollinexus.db"
     
     # Celery settings
     celery_broker_url: str = "memory://"

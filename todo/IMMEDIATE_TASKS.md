@@ -19,8 +19,8 @@
       "celery>=5.3.0",
       "redis>=5.0.0",
       "sqlalchemy>=2.0.0",
-      "alembic>=1.12.0",
-      "psycopg2-binary>=2.9.0",
+      "duckdb>=0.9.0",
+      "duckdb-engine>=0.9.0",
       "pydantic>=2.5.0",
       "python-multipart>=0.0.6",
       "python-jose[cryptography]>=3.3.0",
@@ -66,7 +66,7 @@
 
   ```bash
   # .env
-  DATABASE_URL=postgresql://user:password@localhost/pollinexus
+  DATABASE_URL=duckdb:///pollinexus.db
   CELERY_BROKER_URL=memory://
   CELERY_RESULT_BACKEND=memory://
   API_SECRET_KEY=your-secret-key-here
@@ -171,12 +171,10 @@
           db.close()
   ```
 
-- [ ] **Create Alembic migration**
+- [ ] **Create database tables**
 
   ```bash
-  alembic init alembic
-  alembic revision --autogenerate -m "Initial migration"
-  alembic upgrade head
+  python -m pollinexus.cli init_db
   ```
 
 ### Day 5-7: FastAPI Setup
@@ -905,11 +903,11 @@
 pip install -e ".[dev]"
 
 # 2. Set up environment
-cp .env.example .env
+cp env.example .env
 # Edit .env with your database credentials
 
 # 3. Initialize database
-alembic upgrade head
+python -m pollinexus.cli init_db
 
 # 4. Start FastAPI server
 uvicorn pollinexus.api.main:app --reload
@@ -921,22 +919,31 @@ celery -A pollinexus.tasks.celery_app worker --loglevel=info
 ### Testing the API
 
 ```bash
-# 1. Upload dataset
+# 1. Load CSV directly into DuckDB
+python -m pollinexus.cli load-csv todo/plants_and_bees.csv --table-name plants_and_bees
+
+# 2. Analyze dataset
+python -m pollinexus.cli analyze-dataset plants_and_bees
+
+# 3. Get plant recommendations
+python -m pollinexus.cli get-recommendations plants_and_bees --top-n 5
+
+# 4. Upload dataset via API
 curl -X POST "http://localhost:8000/api/v1/datasets/" \
   -H "Content-Type: multipart/form-data" \
   -F "name=Plants and Bees Dataset" \
   -F "description=Sample pollinator data" \
   -F "file=@todo/plants_and_bees.csv"
 
-# 2. Start analysis
+# 5. Start analysis
 curl -X POST "http://localhost:8000/api/v1/analysis/bee-preferences/" \
   -H "Content-Type: application/json" \
   -d '{"dataset_id": 1, "job_type": "bee_preferences"}'
 
-# 3. Check job status
+# 6. Check job status
 curl "http://localhost:8000/api/v1/analysis/jobs/1"
 
-# 4. Get results
+# 7. Get results
 curl "http://localhost:8000/api/v1/analysis/jobs/1/results"
 ```
 
