@@ -5,20 +5,27 @@ This module configures the FastAPI application with all routes,
 middleware, and error handling.
 """
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
 import uuid
+import traceback
 from typing import Dict, Any
 
 from ..core.config import settings
 from ..core.logging import logger, request_id, correlation_id
 from ..core.metrics import monitor_performance
 from ..core.error_tracking import track_errors, error_tracker
+from ..core.auth import get_current_user, verify_otp_and_generate_token
+from ..services.user_service import UserService
 from .routes import datasets, analysis, visualizations
+from .models.user_models import (
+    UserRegistration, UserLoginRequest, VerifyOTPRequest, VerificationRequest,
+    UserResponseWithId, TokenResponse, VerificationResponse, UserResponseWithFaces
+)
 
 
 @asynccontextmanager
@@ -28,10 +35,12 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(
         "Pollinexus API starting up",
-        version=settings.version,
-        environment=settings.environment,
-        log_level=settings.log_level,
-        operation="app_startup"
+        extra={
+            "version": settings.version,
+            "environment": settings.environment,
+            "log_level": settings.log_level,
+            "operation": "app_startup"
+        }
     )
     
     # Initialize error tracker
@@ -42,7 +51,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info(
         "Pollinexus API shutting down",
-        operation="app_shutdown"
+        extra={"operation": "app_shutdown"}
     )
 
 
@@ -103,13 +112,15 @@ async def request_logging_middleware(request: Request, call_next):
     
     logger.info(
         "API request started",
-        request_id=req_id,
-        correlation_id=corr_id,
-        method=request.method,
-        url=str(request.url),
-        client_ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        operation="api_request_start"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "method": request.method,
+            "url": str(request.url),
+            "client_ip": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+            "operation": "api_request_start"
+        }
     )
     
     try:
@@ -122,13 +133,15 @@ async def request_logging_middleware(request: Request, call_next):
         # Log request completion
         logger.info(
             "API request completed",
-            request_id=req_id,
-            correlation_id=corr_id,
-            method=request.method,
-            url=str(request.url),
-            status_code=response.status_code,
-            process_time=process_time,
-            operation="api_request_complete"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "method": request.method,
+                "url": str(request.url),
+                "status_code": response.status_code,
+                "process_time": process_time,
+                "operation": "api_request_complete"
+            }
         )
         
         # Add correlation ID to response headers
@@ -145,13 +158,15 @@ async def request_logging_middleware(request: Request, call_next):
         # Log request error
         logger.error(
             "API request failed",
-            request_id=req_id,
-            correlation_id=corr_id,
-            method=request.method,
-            url=str(request.url),
-            error=str(e),
-            process_time=process_time,
-            operation="api_request_error"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "method": request.method,
+                "url": str(request.url),
+                "error": str(e),
+                "process_time": process_time,
+                "operation": "api_request_error"
+            }
         )
         
         # Track error
@@ -180,13 +195,15 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     
     logger.warning(
         "HTTP exception occurred",
-        request_id=req_id,
-        correlation_id=corr_id,
-        method=request.method,
-        url=str(request.url),
-        status_code=exc.status_code,
-        detail=exc.detail,
-        operation="http_exception"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "method": request.method,
+            "url": str(request.url),
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+            "operation": "http_exception"
+        }
     )
     
     # Track error
@@ -222,13 +239,15 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     logger.error(
         "Unexpected error occurred",
-        request_id=req_id,
-        correlation_id=corr_id,
-        method=request.method,
-        url=str(request.url),
-        error=str(exc),
-        error_type=type(exc).__name__,
-        operation="unexpected_error"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "method": request.method,
+            "url": str(request.url),
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "operation": "unexpected_error"
+        }
     )
     
     # Track error
@@ -266,9 +285,11 @@ async def health_check():
     
     logger.info(
         "Health check requested",
-        request_id=req_id,
-        correlation_id=corr_id,
-        operation="health_check"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "health_check"
+        }
     )
     
     try:
@@ -284,9 +305,11 @@ async def health_check():
         
         logger.info(
             "Health check completed successfully",
-            request_id=req_id,
-            correlation_id=corr_id,
-            operation="health_check"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "operation": "health_check"
+            }
         )
         
         return health_status
@@ -294,10 +317,12 @@ async def health_check():
     except Exception as e:
         logger.error(
             "Health check failed",
-            request_id=req_id,
-            correlation_id=corr_id,
-            error=str(e),
-            operation="health_check"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "health_check"
+            }
         )
         
         return JSONResponse(
@@ -321,9 +346,11 @@ async def root():
     
     logger.info(
         "Root endpoint accessed",
-        request_id=req_id,
-        correlation_id=corr_id,
-        operation="root_access"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "root_access"
+        }
     )
     
     return {
@@ -371,9 +398,11 @@ async def api_info():
     
     logger.info(
         "API info requested",
-        request_id=req_id,
-        correlation_id=corr_id,
-        operation="api_info"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "api_info"
+        }
     )
     
     api_info = {
@@ -397,6 +426,11 @@ async def api_info():
                 "count": 9,
                 "base_path": "/api/v1/visualizations",
                 "operations": ["bee_distribution", "seasonal_patterns", "site_comparison", "dashboard", "batch"]
+            },
+            "users": {
+                "count": 8,
+                "base_path": "/user",
+                "operations": ["register", "login", "verify", "profile", "management"]
             }
         },
         "features": {
@@ -405,7 +439,9 @@ async def api_info():
             "real_time_monitoring": True,
             "batch_operations": True,
             "search_and_filtering": True,
-            "health_monitoring": True
+            "health_monitoring": True,
+            "user_authentication": True,
+            "otp_verification": True
         },
         "documentation": {
             "interactive_docs": "/docs",
@@ -418,9 +454,11 @@ async def api_info():
     
     logger.info(
         "API info retrieved successfully",
-        request_id=req_id,
-        correlation_id=corr_id,
-        operation="api_info"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "api_info"
+        }
     )
     
     return api_info
@@ -437,9 +475,11 @@ async def get_metrics():
     
     logger.info(
         "Metrics requested",
-        request_id=req_id,
-        correlation_id=corr_id,
-        operation="metrics_endpoint"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "metrics_endpoint"
+        }
     )
     
     try:
@@ -455,9 +495,11 @@ async def get_metrics():
         
         logger.info(
             "Metrics retrieved successfully",
-            request_id=req_id,
-            correlation_id=corr_id,
-            operation="metrics_endpoint"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "operation": "metrics_endpoint"
+            }
         )
         
         return metrics
@@ -465,13 +507,177 @@ async def get_metrics():
     except Exception as e:
         logger.error(
             "Metrics retrieval failed",
-            request_id=req_id,
-            correlation_id=corr_id,
-            error=str(e),
-            operation="metrics_endpoint"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "metrics_endpoint"
+            }
         )
         
         raise HTTPException(status_code=500, detail="Failed to retrieve metrics")
+
+
+############################################################
+# USER API ENDPOINTS
+############################################################
+
+@app.post("/user/send-verification", response_model=VerificationResponse, tags=["User API"])
+async def send_verification(verification_request: VerificationRequest):
+    """Send verification code to user via email or WhatsApp."""
+    
+    try:
+        # Find user by email or phone
+        user = None
+        if verification_request.email:
+            user = UserService.get_user_by_email(verification_request.email)
+        elif verification_request.phone:
+            user = UserService.get_user_by_phone(verification_request.phone)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found. Please register first.")
+        
+        if user["is_deleted"]:
+            raise HTTPException(status_code=400, detail="Account has been deleted")
+        
+        # Generate and send OTP based on verification type
+        if verification_request.verification_type == "email":
+            if not verification_request.email:
+                raise HTTPException(status_code=400, detail="Email is required for email verification")
+            
+            otp = UserService.create_otp(user["user_id"], email=verification_request.email)
+            UserService.send_email_notification(user, "account_verification", otp=otp)
+
+            return {
+                "message": f"Verification code sent to {verification_request.email}",
+                "expires_in": 5 * 60,  # 5 minutes
+                "verification_type": "email"
+            }
+            
+        elif verification_request.verification_type == "whatsapp":
+            if not verification_request.phone:
+                raise HTTPException(status_code=400, detail="Phone number is required for WhatsApp verification")
+            
+            otp = UserService.create_otp(user["user_id"], phone=verification_request.phone)
+            UserService.send_whatsapp_notification(user, "account_verification", otp=otp)
+
+            return {
+                "message": f"Verification code sent to {verification_request.phone}",
+                "expires_in": 5 * 60,  # 5 minutes
+                "verification_type": "whatsapp"
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Invalid verification type")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in send verification endpoint: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/user/register", response_model=UserResponseWithId, tags=["User API"])
+async def register_user(user_data: UserRegistration):
+    """Register a new user with email OTP verification."""
+    
+    try:
+        # Create user (unverified initially)
+        user = UserService.create_user(
+            full_name=user_data.full_name,
+            email=user_data.email,
+            phone=user_data.phone
+        )
+        
+        # Generate and send email OTP for verification
+        otp = UserService.create_otp(user["user_id"], email=user_data.email)
+        UserService.send_email_notification(user, "account_verification", otp=otp)
+        
+        return {
+            "user_id": user["user_id"],
+            "full_name": user["full_name"],
+            "email": user["email"],
+            "phone": user["phone"],
+            "role": user.get("role", "user"),
+            "message": "Registration successful. Please check your email for verification OTP."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in user registration endpoint: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/user/login", tags=["User API"])
+async def login(login_data: UserLoginRequest):
+    """Request OTP for email login."""
+    
+    try:
+        user = UserService.get_user_by_email(login_data.email)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found. Please register first.")
+        
+        if user["is_deleted"]:
+            raise HTTPException(status_code=400, detail="Account has been deleted")
+        
+        if not user["is_verified"]:
+            raise HTTPException(status_code=400, detail="Account not verified. Please verify your account first.")
+        
+        # Generate and send OTP for login
+        otp = UserService.create_otp(user["user_id"], email=login_data.email)
+        UserService.send_email_notification(user, "login_otp", otp=otp)
+        
+        return {
+            "message": f"OTP sent to {login_data.email}",
+            "expires_in": 5 * 60  # 5 minutes
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in login endpoint: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/user/verify-registration", response_model=TokenResponse, tags=["User API"])
+async def verify_registration(request: VerifyOTPRequest):
+    """Verify registration OTP and activate account."""
+    return await verify_otp_and_generate_token(request, mark_verified=True)
+
+
+@app.post("/user/verify-login", response_model=TokenResponse, tags=["User API"])
+async def verify_login(request: VerifyOTPRequest):
+    """Verify login OTP and generate access token."""
+    return await verify_otp_and_generate_token(request, mark_verified=False)
+
+
+@app.get("/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["User API"])
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """Get current authenticated user's information."""
+    try:
+        # Return user data
+        return {
+            "user_id": current_user["user_id"],
+            "full_name": current_user["full_name"],
+            "email": current_user["email"],
+            "phone": current_user["phone"],
+            "faces": []  # No face recognition in this version
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching user information: {e}")
+        logger.error(traceback.format_exc())
+        # Return basic user info in case of error
+        return {
+            "user_id": current_user["user_id"],
+            "full_name": current_user["full_name"],
+            "email": current_user["email"],
+            "phone": current_user["phone"],
+            "faces": []
+        }
 
 
 if __name__ == "__main__":

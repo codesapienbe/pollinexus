@@ -1,337 +1,317 @@
-# 🐝 Pollinexus
+# 🐝 Pollinexus - Data-Driven Pollinator Conservation API
 
-**Data-Driven Pollinator Conservation for Environmental Agencies**
+A comprehensive API platform for environmental agencies to analyze pollinator data, generate insights, and support conservation efforts through machine learning and data science.
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](docs/LICENSE.md)
-[![Contributing](https://img.shields.io/badge/Contributing-Welcome-orange.svg)](docs/CONTRIBUTING.md)
+## 🚀 Current Status
 
-## 📖 Overview
+**Sprint 3 Complete** ✅ - All core API endpoints implemented with comprehensive logging, monitoring, and security features.
 
-Pollinexus is a comprehensive data science project designed to support environmental agencies in creating optimal habitats for pollinator bees. By analyzing the relationship between native/non-native plants and bee species, this project provides evidence-based recommendations for pollinator conservation efforts.
+### ✅ Completed Features
 
-### 🎯 Mission
+- **Core API Infrastructure**
+  - FastAPI application with comprehensive middleware
+  - Structured logging with OpenTelemetry compatibility
+  - Error tracking and monitoring
+  - Performance metrics collection
+  - Health check endpoints
 
-To empower environmental agencies with data-driven insights for establishing pollinator-friendly areas that maximize native bee populations while supporting ecosystem health.
+- **Data Management**
+  - Dataset upload and validation
+  - CSV file processing with security checks
+  - Data cleaning and preprocessing
+  - Database persistence with PostgreSQL
+  - DuckDB integration for analytics
 
-## 🌟 Key Features
+- **Analysis Engine**
+  - Bee species preference analysis
+  - Plant recommendation generation
+  - Seasonal pattern analysis
+  - Site comparison analytics
+  - Machine learning model integration
 
-- **Data Analysis Pipeline**: Clean, process, and analyze plant-bee interaction data
-- **Machine Learning Models**: Identify plant preferences for native vs non-native bee species
-- **Visualization Tools**: Interactive charts showing bee and plant species distributions
-- **Recommendation Engine**: Top plant species recommendations for native bee support
-- **Environmental Impact Assessment**: Evidence-based conservation strategies
+- **Background Processing**
+  - Celery task queue integration
+  - Asynchronous job processing
+  - Task status tracking
+  - Result caching with Redis
 
-## 📊 Dataset
+- **User Management**
+  - User registration and authentication
+  - OTP-based verification system
+  - Role-based access control
+  - Session management
 
-The project analyzes the `plants_and_bees.csv` dataset containing:
+- **Visualization Services**
+  - Interactive chart generation
+  - Dashboard creation
+  - Batch visualization processing
+  - Multiple output formats
 
-| Column | Description |
-|--------|-------------|
-| `sample_id` | Unique sample identifier |
-| `bees_num` | Total bee individuals in sample |
-| `date` | Sample collection date |
-| `season` | Early or late season sampling |
-| `site` | Collection site identifier |
-| `native_or_non` | Native or non-native plot |
-| `sampling` | Sampling method used |
-| `plant_species` | Plant species sampled (None = air sample) |
-| `time` | Sample collection time |
-| `bee_species` | Bee species identified |
-| `sex` | Bee gender |
-| `specialized_on` | Preferred plant genus |
-| `parasitic` | Parasitic behavior (0=no, 1=yes) |
-| `nesting` | Nesting method |
-| `status` | Bee species status |
-| `nonnative_bee` | Native status (0=native, 1=non-native) |
+- **Security Features**
+  - Input validation and sanitization
+  - SQL injection prevention
+  - XSS protection
+  - File upload security
+  - Rate limiting
+  - CORS configuration
 
-**Source**: [DataDryad Dataset](https://datadryad.org/stash/dataset/doi%253A10.5061%252Fdryad.pzgmsbcj8) (modified for educational purposes)
+## 🎯 Next Steps: Sprint 4 - Testing & Quality Assurance
 
-## 🚀 Getting Started
+### Immediate Priorities
+
+1. **Comprehensive Testing Suite** 🔄
+   - Unit tests for all components
+   - Integration tests for API endpoints
+   - Security vulnerability testing
+   - Performance and load testing
+   - Database migration testing
+
+2. **Production Deployment** 🚀
+   - Docker containerization
+   - Kubernetes deployment manifests
+   - CI/CD pipeline setup
+   - Monitoring and alerting
+   - Backup and disaster recovery
+
+3. **Documentation & Training** 📚
+   - API documentation updates
+   - User guides and tutorials
+   - Developer onboarding materials
+   - Deployment runbooks
+
+## 🛠️ Quick Start
 
 ### Prerequisites
 
-- Python 3.12 or higher
-- Jupyter Notebook or JupyterLab
-- Required Python packages (see `pyproject.toml`)
+- Python 3.12+
+- Docker and Docker Compose
+- PostgreSQL 15+
+- Redis 7+
 
-### Installation
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/codesapienbe/pollinexus.git
-   cd pollinexus
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   pip install -e .
-   ```
-
-3. **Set up environment**
-
-   ```bash
-   cp env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Initialize the database**
-
-   ```bash
-   python -m pollinexus.cli init-db
-   ```
-
-5. **Run the API server**
-
-   ```bash
-   uvicorn pollinexus.api.main:app --reload
-   ```
-
-6. **Access the API**
-   - Interactive docs: http://localhost:8000/docs
-   - API base URL: http://localhost:8000/api/v1
-
-### API Usage Examples
-
-#### Dataset Management
-
-**Upload a dataset:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/datasets/" \
-  -F "name=Plants and Bees Dataset" \
-  -F "description=Sample pollinator data from environmental study" \
-  -F "file=@plants_and_bees.csv"
-```
-
-**List datasets:**
-```bash
-curl "http://localhost:8000/api/v1/datasets/?skip=0&limit=10"
-```
-
-**Get dataset info:**
-```bash
-curl "http://localhost:8000/api/v1/datasets/1/info"
-```
-
-#### Analysis Operations
-
-**Start bee preference analysis:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/analysis/bee-preferences/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dataset_id": 1,
-    "target_column": "nonnative_bee",
-    "model_type": "random_forest",
-    "test_size": 0.2
-  }'
-```
-
-**Check analysis job status:**
-```bash
-curl "http://localhost:8000/api/v1/analysis/jobs/1/status"
-```
-
-**Get analysis results:**
-```bash
-curl "http://localhost:8000/api/v1/analysis/jobs/1/results"
-```
-
-#### Visualization Operations
-
-**Create bee distribution plot:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/visualizations/bee-distribution/?dataset_id=1" \
-  -H "Content-Type: application/json" \
-  -d '{"top_n": 20, "include_percentages": true}'
-```
-
-**Create batch visualizations:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/visualizations/batch/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dataset_id": 1,
-    "plot_types": ["bee_distribution", "seasonal_patterns", "site_comparison"],
-    "parameters": {
-      "top_n": 20,
-      "include_trends": true
-    }
-  }'
-```
-
-**Download visualization:**
-```bash
-curl "http://localhost:8000/api/v1/visualizations/1703123456/download?task_id=abc123-def456"
-```
-
-#### Complete Workflow Example
+### Development Setup
 
 ```bash
-# 1. Upload dataset
-curl -X POST "http://localhost:8000/api/v1/datasets/" \
-  -F "name=Plants and Bees Dataset" \
-  -F "description=Sample pollinator data" \
-  -F "file=@plants_and_bees.csv"
+# Clone the repository
+git clone https://github.com/your-username/pollinexus.git
+cd pollinexus
 
-# 2. Start analysis
-curl -X POST "http://localhost:8000/api/v1/analysis/bee-preferences/" \
-  -H "Content-Type: application/json" \
-  -d '{"dataset_id": 1, "target_column": "nonnative_bee", "model_type": "random_forest"}'
+# Install dependencies
+pip install -e ".[dev]"
 
-# 3. Check status
-curl "http://localhost:8000/api/v1/analysis/jobs/1/status"
+# Set up environment
+cp env.example .env
+# Edit .env with your configuration
 
-# 4. Get results
-curl "http://localhost:8000/api/v1/analysis/jobs/1/results"
+# Initialize database
+python -m pollinexus.cli init_db
 
-# 5. Create visualization
-curl -X POST "http://localhost:8000/api/v1/visualizations/bee-distribution/?dataset_id=1"
+# Start development server
+uvicorn pollinexus.api.main:app --reload
 
-# 6. Download visualization
-curl "http://localhost:8000/api/v1/visualizations/1703123456/download?task_id=abc123-def456"
+# Start Celery worker (in new terminal)
+celery -A pollinexus.tasks.celery_app worker --loglevel=info
 ```
 
-### Jupyter Notebook Analysis
+### Production Deployment
 
-3. **Launch Jupyter**
+```bash
+# Deploy to production
+./scripts/deploy.sh production
 
-   ```bash
-   jupyter notebook
-   ```
+# Monitor deployment
+docker-compose -f docker/production/docker-compose.yml logs -f
 
-4. **Open the analysis notebook**
-   - Navigate to `todo/project.ipynb`
-   - Run all cells to reproduce the analysis
-
-## 📈 Project Structure
-
-```
-pollinexus/
-├── README.md                 # This file
-├── pyproject.toml           # Project configuration
-├── env.example              # Environment variables template
-├── assets/                  # Static assets (images, etc.)
-├── docs/                    # Documentation
-│   ├── LICENSE.md          # Project license
-│   ├── CONTRIBUTING.md     # Contribution guidelines
-│   ├── CODE_OF_CONDUCT.md  # Community standards
-│   ├── API.md              # API documentation
-│   ├── CHANGELOG.md        # Project changelog
-│   └── README.md           # Documentation index
-├── src/                     # Source code
-│   └── pollinexus/         # Main package
-│       ├── __init__.py     # Package initialization
-│       ├── cli.py          # Command-line interface
-│       ├── api/            # FastAPI application
-│       │   ├── main.py     # Main API application
-│       │   ├── models/     # Request/response models
-│       │   └── routes/     # API route handlers
-│       ├── core/           # Core functionality
-│       │   ├── config.py   # Configuration management
-│       │   ├── database.py # Database connection
-│       │   ├── logging.py  # Logging configuration
-│       │   ├── metrics.py  # Performance monitoring
-│       │   └── error_tracking.py # Error handling
-│       ├── models/         # Database models
-│       ├── services/       # Business logic services
-│       │   ├── data_service.py      # Data processing
-│       │   ├── database_service.py  # Database operations
-│       │   └── duckdb_service.py    # DuckDB operations
-│       ├── tasks/          # Celery background tasks
-│       │   ├── celery_app.py        # Celery configuration
-│       │   ├── analysis.py          # Analysis tasks
-│       │   ├── visualization.py     # Visualization tasks
-│       │   └── data_processing.py   # Data processing tasks
-│       └── utils/          # Utility functions
-├── test/                    # Test suite
-└── todo/                    # Analysis files
-    ├── project.ipynb       # Main analysis notebook
-    ├── plants_and_bees.csv # Dataset
-    ├── DEVELOPMENT_PLAN.md # Development roadmap
-    └── IMMEDIATE_TASKS.md  # Current tasks
+# Access services
+# API: http://localhost
+# Grafana: http://localhost:3000
+# Prometheus: http://localhost:9090
+# Kibana: http://localhost:5601
 ```
 
-## 🔬 Analysis Components
+## 📊 API Endpoints
 
-### 1. Data Management
+### Datasets
+- `POST /api/v1/datasets/` - Upload dataset
+- `GET /api/v1/datasets/` - List datasets
+- `GET /api/v1/datasets/{id}` - Get dataset
+- `DELETE /api/v1/datasets/{id}` - Delete dataset
+- `GET /api/v1/datasets/{id}/info` - Dataset statistics
+- `GET /api/v1/datasets/search` - Search datasets
 
-- **Dataset Upload & Validation**: Multi-format support (CSV, Excel, Parquet)
-- **Data Cleaning**: Automated cleaning and preprocessing
-- **Data Validation**: Comprehensive validation with error reporting
-- **Dataset Health Monitoring**: Real-time health checks and status monitoring
+### Analysis
+- `POST /api/v1/analysis/bee-preferences/` - Start bee analysis
+- `POST /api/v1/analysis/plant-recommendations/` - Generate recommendations
+- `GET /api/v1/analysis/jobs/{id}` - Get job status
+- `GET /api/v1/analysis/jobs/{id}/results` - Get results
 
-### 2. Machine Learning Analysis
+### Visualizations
+- `POST /api/v1/visualizations/bee-distribution/` - Create bee charts
+- `POST /api/v1/visualizations/seasonal-patterns/` - Seasonal analysis
+- `POST /api/v1/visualizations/dashboard/` - Generate dashboard
+- `GET /api/v1/visualizations/{id}/download` - Download visualization
 
-- **Bee Preference Analysis**: ML models to identify plant preferences
-- **Plant Recommendations**: Intelligent recommendation system
-- **Seasonal Analysis**: Pattern analysis and trend identification
-- **Site Comparison**: Cross-site analysis and ranking
-- **Feature Importance**: Automated feature importance analysis
+### User Management
+- `POST /user/register` - Register user
+- `POST /user/login` - Login
+- `POST /user/verify-registration` - Verify account
+- `GET /user/me` - Get user profile
 
-### 3. Visualization
+## 🔧 Testing
 
-- **Bee Distribution Plots**: Interactive species distribution charts
-- **Seasonal Patterns**: Multi-panel seasonal analysis
-- **Site Comparison**: Cross-site comparison visualizations
-- **Interactive Dashboards**: Comprehensive data exploration tools
-- **Batch Visualization**: Multiple plot generation
+### Run All Tests
+```bash
+# Run comprehensive test suite
+python test/run_tests.py --type all
 
-### 4. API & Services
+# Run specific test categories
+python test/run_tests.py --type security
+python test/run_tests.py --type performance
+python test/run_tests.py --type api
+```
 
-- **RESTful API**: Complete REST API with comprehensive endpoints
-- **Background Processing**: Celery-based asynchronous task processing
-- **Real-time Monitoring**: Job status tracking and progress monitoring
-- **File Management**: Automated file handling and cleanup
-- **Comprehensive Logging**: OpenTelemetry-friendly logging and monitoring
+### Test Categories
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Component interaction testing
+- **API Tests**: Endpoint functionality testing
+- **Security Tests**: Vulnerability and security testing
+- **Performance Tests**: Load and stress testing
+- **Database Tests**: Data persistence testing
 
-### 5. Recommendations
+## 📈 Monitoring & Observability
 
-- **Plant Recommendations**: Top plant species for native bee support
-- **Conservation Strategies**: Evidence-based conservation recommendations
-- **Implementation Guidelines**: Practical implementation guidance
-- **Environmental Impact Assessment**: Impact analysis and reporting
+### Metrics Collection
+- **Prometheus**: System and application metrics
+- **Grafana**: Visualization and dashboards
+- **Elasticsearch**: Log aggregation and search
+- **Kibana**: Log visualization and analysis
+
+### Health Checks
+- Application health: `/health`
+- Database connectivity
+- Redis connectivity
+- Celery worker status
+- External service dependencies
+
+### Logging
+- Structured JSON logging
+- Request/response correlation
+- Error tracking and alerting
+- Performance monitoring
+- Security event logging
+
+## 🔒 Security Features
+
+### Input Validation
+- SQL injection prevention
+- XSS protection
+- File upload security
+- Path traversal prevention
+- Command injection protection
+
+### Authentication & Authorization
+- JWT token-based authentication
+- OTP verification system
+- Role-based access control
+- Session management
+- Rate limiting
+
+### Data Protection
+- Sensitive data encryption
+- Secure file handling
+- Audit logging
+- Backup encryption
+- Network security
+
+## 🚀 Deployment Architecture
+
+### Production Stack
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Nginx Proxy   │    │   Load Balancer │    │   CDN/Edge      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │  Pollinexus API │
+                    └─────────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   PostgreSQL    │    │     Redis       │    │   Elasticsearch │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │  Celery Workers │
+                    └─────────────────┘
+```
+
+### Scalability Features
+- Horizontal scaling with load balancers
+- Database connection pooling
+- Redis clustering for high availability
+- Celery worker auto-scaling
+- Container orchestration with Kubernetes
+
+## 📚 Documentation
+
+### API Documentation
+- Interactive docs: `/docs` (Swagger UI)
+- ReDoc documentation: `/redoc`
+- OpenAPI schema: `/openapi.json`
+
+### User Guides
+- [Getting Started Guide](docs/GETTING_STARTED.md)
+- [API Reference](docs/API.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+
+### Developer Resources
+- [Development Setup](docs/DEVELOPMENT.md)
+- [Contributing Guidelines](docs/CONTRIBUTING.md)
+- [Architecture Overview](docs/ARCHITECTURE.md)
+- [Testing Guide](docs/TESTING.md)
 
 ## 🤝 Contributing
 
-We welcome contributions from researchers, environmental scientists, and data enthusiasts! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
 
-### How to Contribute
-
+### Development Workflow
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Run the test suite
+6. Submit a pull request
 
-## 📋 Code of Conduct
-
-This project adheres to a [Code of Conduct](docs/CODE_OF_CONDUCT.md) to ensure a welcoming and inclusive environment for all contributors.
+### Code Quality
+- Type hints required
+- Comprehensive test coverage
+- Security review for all changes
+- Performance testing for new features
+- Documentation updates
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](docs/LICENSE.md) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- **Data Source**: Original dataset from DataDryad
-- **Environmental Agencies**: For their commitment to pollinator conservation
-- **Research Community**: For advancing pollinator science
+- Environmental agencies for domain expertise
+- Open source community for tools and libraries
+- Research institutions for pollinator data
+- Conservation organizations for guidance
 
-## 📞 Contact
+## 📞 Support
 
-- **Project Maintainer**: [Your Name](mailto:your.email@example.com)
+- **Documentation**: [docs/](docs/)
 - **Issues**: [GitHub Issues](https://github.com/your-username/pollinexus/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-username/pollinexus/discussions)
-
-## 🔗 Related Projects
-
-- [Bee Conservation Network](https://example.com)
-- [Native Plant Database](https://example.com)
-- [Pollinator Monitoring Initiative](https://example.com)
+- **Email**: contact@pollinexus.org
 
 ---
 
-**Made with ❤️ for pollinator conservation**
+**Pollinexus** - Empowering environmental conservation through data-driven insights 🐝🌱

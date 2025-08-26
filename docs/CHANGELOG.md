@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Pollinexus project will be documented in this file.
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,50 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial project structure and documentation
-- README with comprehensive project overview
-- Contributing guidelines and code of conduct
-- API documentation framework
-- License file with MIT license
 - **Sprint 1 Progress**: Project structure and dependencies setup
-  - Updated pyproject.toml with FastAPI, Celery, and database dependencies
-  - Created core package structure with proper **init**.py files
-  - Implemented configuration system with Pydantic Settings
-  - Created environment configuration example file
+  - Created comprehensive project structure with modular design
+  - Set up FastAPI application with proper configuration
+  - Implemented DuckDB integration for data processing
+  - Added Pydantic models for request/response validation
+  - Created CLI interface for data operations
+  - Set up comprehensive documentation structure
+
 - **Sprint 1 Progress**: Database setup and configuration
-  - Created comprehensive SQLAlchemy database models (Dataset, AnalysisJob, PlantRecommendation, AnalysisResult)
-  - Implemented database connection and session management
-  - Set up Alembic for database migrations with proper configuration
-  - Created CLI tools for database management and application setup
-- **Database Migration**: Switched from PostgreSQL to DuckDB for better data science capabilities
-  - Updated dependencies to use DuckDB and DuckDB-Engine
-  - Created DuckDBService for direct CSV access and vector calculations
-  - Implemented efficient analytical queries leveraging DuckDB's columnar storage
-  - Added CLI commands for direct CSV loading and analysis
-  - Removed Alembic dependency in favor of simpler DuckDB table creation
+  - Implemented DuckDB database integration with SQLAlchemy
+  - Created database models for datasets, analysis jobs, and recommendations
+  - Set up database connection management and session handling
+  - Added CLI commands for database initialization and CSV loading
+  - Implemented DuckDB service for direct CSV operations
+
+- **Database Migration**: Switched from PostgreSQL to DuckDB
+  - Updated dependencies to use DuckDB instead of PostgreSQL
+  - Modified database configuration for DuckDB compatibility
+  - Updated CLI commands to use DuckDB operations
+  - Removed Alembic migrations in favor of direct DuckDB operations
+  - Added DuckDB service for enhanced data processing capabilities
+
 - **Sprint 1 Progress**: FastAPI application setup and configuration
-  - Created main FastAPI application with comprehensive middleware and error handling
-  - Implemented Pydantic request/response models with validation and documentation
-  - Set up CORS, trusted host middleware, and request logging
-  - Created placeholder route structure for datasets, analysis, and visualizations
-  - Added health check endpoints and global exception handling
+  - Created main FastAPI application with proper middleware
+  - Implemented CORS and security middleware
+  - Added request logging and error handling
+  - Set up health check endpoints
+  - Created API router structure for modular endpoints
+
 - **Sprint 2 Planning**: Comprehensive logging and monitoring infrastructure
-  - Added structured logging setup with OpenTelemetry-compatible JSON format
-  - Created request/response logging middleware with correlation IDs
-  - Implemented service-level logging for DuckDB operations and database services
-  - Added Celery task monitoring with comprehensive error tracking
-  - Created performance monitoring system with memory and execution time tracking
-  - Implemented error tracking and alerting system with configurable thresholds
-  - Enhanced health check endpoints with system metrics and error summaries
-  - Added CLI command logging for all operations
-  - Created metrics collection endpoints for monitoring dashboards
+  - Added tasks for structured logging with OpenTelemetry compatibility
+  - Planned service-level logging and monitoring
+  - Designed database service logging and performance tracking
+  - Outlined Celery task monitoring and error tracking
+  - Planned API route logging and performance monitoring
+
 - **Sprint 2 Progress**: Data processing services implementation
-  - Created comprehensive DataService with logging and monitoring
-  - Implemented dataset loading, validation, cleaning, and analysis operations
-  - Added performance monitoring decorators for all data operations
-  - Created DatabaseService with full CRUD operations and comprehensive logging
-  - Implemented database statistics and cleanup functionality
-  - Added error tracking and performance metrics for all database operations
+  - Created comprehensive data service with validation and cleaning
+  - Implemented database service with CRUD operations and search
+  - Added DuckDB service for direct CSV operations and analysis
+  - Integrated performance monitoring and error tracking
+  - Added comprehensive logging throughout all services
+
 - **Sprint 2 Progress**: Celery tasks setup and configuration
   - Created comprehensive Celery application with monitoring and error handling
   - Implemented analysis tasks for bee preferences, plant recommendations, seasonal analysis, and site comparison
@@ -60,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added data processing tasks for dataset processing, export, sampling, and validation
   - Implemented task routing, rate limiting, and performance monitoring
   - Added comprehensive task lifecycle logging with correlation IDs and progress tracking
+
 - **Sprint 3 Progress**: API endpoints implementation
   - Created comprehensive dataset management API with full CRUD operations
   - Implemented analysis API endpoints for all analysis types with Celery integration
@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added comprehensive request/response logging and error tracking
   - Implemented file upload validation and dataset health checks
   - Added search, filtering, and pagination for all endpoints
+
 - **Sprint 3 Progress**: API integration and testing
   - Integrated all API routes into main FastAPI application with proper prefixing
   - Implemented comprehensive logging and monitoring middleware
@@ -75,55 +76,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented error tracking and alerting system
   - Added health checks, API info, and metrics endpoints
 
+- **Sprint 3 Progress**: Testing and validation
+  - Created comprehensive API testing suite with pytest
+  - Implemented test fixtures and configuration for all components
+  - Added unit tests for all API endpoints and services
+  - Created integration tests for complete workflows
+  - Implemented test runner script with multiple options
+  - Added coverage reporting and quality checks
+
+- **Sprint 3 Progress**: Streamlined deployment configuration
+  - Created simplified Docker Compose setup with uv package management
+  - Removed all bash deployment scripts for simplified management
+  - Added Dockerfile optimized for uv and development workflow
+  - Configured internal-only services (Redis, Celery, Flower) for security
+  - Updated deployment documentation for Docker Compose-only approach
+
+- **User Authentication and Authorization**: Complete user management system
+  - Implemented comprehensive user service with DuckDB integration
+  - Created user database models (User, UserOTP, UserSession) for authentication
+  - Added JWT-based authentication with token management
+  - Implemented OTP-based verification system for email and WhatsApp
+  - Created user API endpoints for registration, login, verification, and profile management
+  - Added authentication utilities with role-based access control
+  - Implemented user management CLI commands for administration
+  - Added comprehensive user request/response models with validation
+  - Integrated user authentication with existing API endpoints
+  - Removed face recognition functionality to focus on core authentication
+
+- **Analysis Notebook**: Comprehensive Jupyter notebook for API demonstration
+  - Created `pollinexus_analysis.ipynb` with complete API workflow demonstration
+  - Added user authentication and API integration examples
+  - Implemented dataset upload, analysis, and visualization workflows
+  - Included manual analysis fallback for when API is not available
+  - Added comprehensive data cleaning, ML analysis, and plant recommendations
+  - Integrated with Pollinexus API endpoints for real-time analysis
+  - Provided complete environmental agency use case demonstration
+
 ### Changed
 
-- N/A
+- **Database Configuration**: Updated to use DuckDB for better CSV compatibility and vector operations
+- **API Structure**: Reorganized API routes for better modularity and maintainability
+- **Logging System**: Implemented structured logging with OpenTelemetry compatibility
+- **Testing Framework**: Enhanced test suite with comprehensive coverage and quality checks
+- **Deployment Strategy**: Simplified to Docker Compose with uv package management
+- **Package Management**: Migrated from pip to uv for faster dependency resolution
+- **User Service**: Refactored to use DuckDB instead of PostgreSQL, removed face recognition features
+- **Authentication System**: Implemented JWT-based authentication with OTP verification
+- **API Endpoints**: Added comprehensive user management endpoints with proper validation
+- **Project Notebook**: Replaced original project.ipynb with comprehensive API-aligned notebook
 
 ### Deprecated
 
-- N/A
+- **Alembic Migrations**: Replaced with direct DuckDB operations for simpler data management
+- **PostgreSQL Dependencies**: Removed in favor of DuckDB for better data science workflow
+- **Bash Deployment Scripts**: Removed in favor of direct Docker Compose commands
+- **Nginx Configuration**: Removed in favor of direct API exposure
+- **Face Recognition Features**: Removed from user service to focus on core authentication
+- **Original Project Notebook**: Replaced with API-integrated version
 
 ### Removed
 
-- N/A
+- **PostgreSQL Configuration**: Removed all PostgreSQL-related configuration and dependencies
+- **Alembic Migration Files**: Removed migration files in favor of direct database operations
+- **Complex Deployment Infrastructure**: Removed Nginx, Gunicorn, and complex deployment scripts
+- **External Service Exposure**: Removed external ports for internal services (Redis, Flower)
+- **Bash Scripts**: Removed all deployment bash scripts for simplified management
+- **Face Recognition Code**: Removed all face detection, embedding, and similarity search functionality
+- **Video Matching Features**: Removed video analysis and matching capabilities
+- **S3 Storage Dependencies**: Removed S3 bucket and storage service dependencies
+- **Original Project Notebook**: Replaced with comprehensive API-integrated version
 
 ### Fixed
 
-- N/A
+- **Database Connection**: Fixed DuckDB connection issues and configuration
+- **API Endpoints**: Resolved issues with request/response models and validation
+- **Logging Integration**: Fixed correlation ID propagation across all components
+- **Test Configuration**: Resolved test database setup and cleanup issues
+- **Deployment Configuration**: Simplified Docker and package management configuration
+- **User Authentication**: Fixed JWT token handling and session management
+- **OTP Verification**: Resolved OTP creation and verification workflow
+- **Notebook Integration**: Aligned project notebook with API capabilities and workflow
 
 ### Security
 
-- N/A
+- **Input Validation**: Enhanced input validation for all API endpoints
+- **File Upload Security**: Implemented secure file upload handling with validation
+- **Error Handling**: Improved error handling to prevent information leakage
+- **CORS Configuration**: Updated CORS settings for production security
+- **Service Isolation**: Internal services (Redis, Celery) not exposed externally
+- **User Authentication**: Implemented secure JWT-based authentication
+- **Password Security**: Added password hashing with SHA-256
+- **Session Management**: Implemented secure session handling with token hashing
+- **Role-Based Access**: Added role-based access control for admin functions
 
-## [0.1.0] - 2024-12-19
+## [0.1.0] - 2023-12-21
 
 ### Added
 
-- Initial project setup
-- Basic project structure with docs, src, test directories
-- Jupyter notebook for pollinator data analysis
-- CSV dataset for plants and bees research
-- Project configuration with pyproject.toml
-
-### Changed
-
-- N/A
-
-### Deprecated
-
-- N/A
-
-### Removed
-
-- N/A
-
-### Fixed
-
-- N/A
-
-### Security
-
-- N/A
+- Initial project setup and structure
+- Basic FastAPI application with health checks
+- DuckDB integration for data processing
+- CLI interface for data operations
+- Comprehensive documentation structure
+- MIT License and contribution guidelines
 
 ---
 
