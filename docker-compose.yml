@@ -1,105 +1,73 @@
 version: '3.8'
 
 services:
-  # API Service
   api:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development
     ports:
-      - "8000:8000"  # Only API exposed externally
+      - "8000:8000"
     environment:
       - ENVIRONMENT=development
       - DATABASE_URL=duckdb:///pollinexus.db
       - LOG_LEVEL=INFO
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - ./uploads:/app/uploads
-      - ./visualizations:/app/visualizations
-      - ./results:/app/results
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./models:/app/models
     depends_on:
       - redis
-      - celery
     networks:
       - pollinexus-network
     restart: unless-stopped
-    command: uv run uvicorn pollinexus.api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn pollinexus.api.main:app --host 0.0.0.0 --port 8000
 
-  # Celery Worker
-  celery:
+  trainer:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development
-    command: uv run celery -A pollinexus.tasks.celery_app worker --loglevel=info
     environment:
       - ENVIRONMENT=development
       - DATABASE_URL=duckdb:///pollinexus.db
       - LOG_LEVEL=INFO
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
-      - ./uploads:/app/uploads
-      - ./visualizations:/app/visualizations
-      - ./results:/app/results
-      - ./logs:/app/logs
       - ./data:/app/data
-    depends_on:
-      - redis
-    networks:
-      - pollinexus-network
-    restart: unless-stopped
-
-  # Celery Beat (for scheduled tasks)
-  celery-beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    command: uv run celery -A pollinexus.tasks.celery_app beat --loglevel=info
-    environment:
-      - ENVIRONMENT=development
-      - DATABASE_URL=duckdb:///pollinexus.db
-      - LOG_LEVEL=INFO
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
+      - ./models:/app/models
       - ./logs:/app/logs
     depends_on:
       - redis
+      - api
     networks:
       - pollinexus-network
-    restart: unless-stopped
+    restart: "no"
+    command: python -m pollinexus.pipeline.pipeline train
 
-  # Redis (Message Broker) - Internal only
   redis:
     image: redis:7-alpine
     networks:
       - pollinexus-network
     restart: unless-stopped
-    # No ports exposed - internal network only
 
-  # Flower (Celery Monitoring) - Internal only
-  flower:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    command: uv run celery -A pollinexus.tasks.celery_app flower --port=5555
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      - redis
-      - celery
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
       - pollinexus-network
     restart: unless-stopped
-    # No ports exposed - internal network only
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - pollinexus-network
+    restart: unless-stopped
 
 networks:
   pollinexus-network:

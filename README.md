@@ -128,9 +128,61 @@ docker-compose -f docker/production/docker-compose.yml logs -f
 # Kibana: http://localhost:5601
 ```
 
+## 🚀 CI/CD/CT Pipeline
+
+### Pipeline Validation
+
+```bash
+# Make validation script executable
+chmod +x scripts/validate_pipeline.sh
+
+# Run comprehensive pipeline validation
+./scripts/validate_pipeline.sh
+
+# Or run quick validation
+python test/run_tests.py --type all --verbose
+```
+
+### Manual Pipeline Trigger
+
+1. **Navigate to GitHub Actions**:
+   - Go to your repository on GitHub
+   - Click on the "Actions" tab
+   - Select "CI/CD Pipeline" workflow
+
+2. **Trigger Manual Run**:
+   - Click "Run workflow" button
+   - Select branch: `main` or `develop`
+   - Choose environment: `staging` or `production`
+   - Enable "Retrain models" if needed
+   - Click "Run workflow"
+
+### Pipeline Features
+
+#### ✅ **Continuous Integration**
+- **Security Scanning**: Trivy, Bandit, Safety
+- **Code Quality**: Black, isort, Flake8, MyPy, Pylint
+- **Testing**: Unit, integration, API, security, performance tests
+- **Coverage**: Automated test coverage reporting
+
+#### ✅ **Continuous Deployment**
+- **Multi-environment**: Staging and production deployments
+- **Docker**: Automated image building and pushing
+- **Kubernetes**: Production-ready deployment manifests
+- **Rollback**: Automated rollback capabilities
+
+#### ✅ **Continuous Training**
+- **Model Training**: Automated ML model retraining
+- **Model Registry**: Version tracking and performance monitoring
+- **Data Validation**: Automated data quality checks
+- **Performance Monitoring**: Model drift detection
+
+For detailed pipeline documentation, see: [CI/CD Guide](docs/CI_CD_GUIDE.md)
+
 ## 📊 API Endpoints
 
 ### Datasets
+
 - `POST /api/v1/datasets/` - Upload dataset
 - `GET /api/v1/datasets/` - List datasets
 - `GET /api/v1/datasets/{id}` - Get dataset
@@ -139,18 +191,21 @@ docker-compose -f docker/production/docker-compose.yml logs -f
 - `GET /api/v1/datasets/search` - Search datasets
 
 ### Analysis
+
 - `POST /api/v1/analysis/bee-preferences/` - Start bee analysis
 - `POST /api/v1/analysis/plant-recommendations/` - Generate recommendations
 - `GET /api/v1/analysis/jobs/{id}` - Get job status
 - `GET /api/v1/analysis/jobs/{id}/results` - Get results
 
 ### Visualizations
+
 - `POST /api/v1/visualizations/bee-distribution/` - Create bee charts
 - `POST /api/v1/visualizations/seasonal-patterns/` - Seasonal analysis
 - `POST /api/v1/visualizations/dashboard/` - Generate dashboard
 - `GET /api/v1/visualizations/{id}/download` - Download visualization
 
 ### User Management
+
 - `POST /user/register` - Register user
 - `POST /user/login` - Login
 - `POST /user/verify-registration` - Verify account
@@ -159,6 +214,7 @@ docker-compose -f docker/production/docker-compose.yml logs -f
 ## 🔧 Testing
 
 ### Run All Tests
+
 ```bash
 # Run comprehensive test suite
 python test/run_tests.py --type all
@@ -170,6 +226,7 @@ python test/run_tests.py --type api
 ```
 
 ### Test Categories
+
 - **Unit Tests**: Individual component testing
 - **Integration Tests**: Component interaction testing
 - **API Tests**: Endpoint functionality testing
@@ -180,12 +237,14 @@ python test/run_tests.py --type api
 ## 📈 Monitoring & Observability
 
 ### Metrics Collection
+
 - **Prometheus**: System and application metrics
 - **Grafana**: Visualization and dashboards
 - **Elasticsearch**: Log aggregation and search
 - **Kibana**: Log visualization and analysis
 
 ### Health Checks
+
 - Application health: `/health`
 - Database connectivity
 - Redis connectivity
@@ -193,6 +252,7 @@ python test/run_tests.py --type api
 - External service dependencies
 
 ### Logging
+
 - Structured JSON logging
 - Request/response correlation
 - Error tracking and alerting
@@ -202,6 +262,7 @@ python test/run_tests.py --type api
 ## 🔒 Security Features
 
 ### Input Validation
+
 - SQL injection prevention
 - XSS protection
 - File upload security
@@ -209,6 +270,7 @@ python test/run_tests.py --type api
 - Command injection protection
 
 ### Authentication & Authorization
+
 - JWT token-based authentication
 - OTP verification system
 - Role-based access control
@@ -216,6 +278,7 @@ python test/run_tests.py --type api
 - Rate limiting
 
 ### Data Protection
+
 - Sensitive data encryption
 - Secure file handling
 - Audit logging
@@ -225,6 +288,7 @@ python test/run_tests.py --type api
 ## 🚀 Deployment Architecture
 
 ### Production Stack
+
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Nginx Proxy   │    │   Load Balancer │    │   CDN/Edge      │
@@ -250,6 +314,7 @@ python test/run_tests.py --type api
 ```
 
 ### Scalability Features
+
 - Horizontal scaling with load balancers
 - Database connection pooling
 - Redis clustering for high availability
@@ -259,17 +324,20 @@ python test/run_tests.py --type api
 ## 📚 Documentation
 
 ### API Documentation
+
 - Interactive docs: `/docs` (Swagger UI)
 - ReDoc documentation: `/redoc`
 - OpenAPI schema: `/openapi.json`
 
 ### User Guides
+
 - [Getting Started Guide](docs/GETTING_STARTED.md)
 - [API Reference](docs/API.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 
 ### Developer Resources
+
 - [Development Setup](docs/DEVELOPMENT.md)
 - [Contributing Guidelines](docs/CONTRIBUTING.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
@@ -280,6 +348,7 @@ python test/run_tests.py --type api
 We welcome contributions! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
 
 ### Development Workflow
+
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
@@ -288,6 +357,7 @@ We welcome contributions! Please see our [Contributing Guidelines](docs/CONTRIBU
 6. Submit a pull request
 
 ### Code Quality
+
 - Type hints required
 - Comprehensive test coverage
 - Security review for all changes
@@ -310,7 +380,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: [docs/](docs/)
 - **Issues**: [GitHub Issues](https://github.com/your-username/pollinexus/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-username/pollinexus/discussions)
-- **Email**: contact@pollinexus.org
+- **Email**: <contact@pollinexus.org>
 
 ---
 

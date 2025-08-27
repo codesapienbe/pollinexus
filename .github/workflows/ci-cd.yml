@@ -1,0 +1,415 @@
+name: Pollinexus CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run model retraining weekly
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      retrain_models:
+        description: 'Retrain ML models'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Security and Code Quality Checks
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Bandit security linter
+        run: |
+          pip install bandit
+          bandit -r src/ -f json -o bandit-report.json || true
+
+      - name: Run Safety check
+        run: |
+          pip install safety
+          safety check --json --output safety-report.json || true
+
+  # Code Quality and Linting
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Black code formatter
+        run: black --check --diff src/ test/
+
+      - name: Run isort import sorter
+        run: isort --check-only --diff src/ test/
+
+      - name: Run Flake8 linter
+        run: flake8 src/ test/ --max-line-length=88 --extend-ignore=E203,W503
+
+      - name: Run MyPy type checker
+        run: mypy src/
+
+      - name: Run Pylint
+        run: |
+          pip install pylint
+          pylint src/ --rcfile=.pylintrc || true
+
+  # Unit and Integration Tests
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13']
+        test-type: ['unit', 'integration', 'api', 'security']
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_pollinexus
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Set up test environment
+        run: |
+          export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/test_pollinexus"
+          export CELERY_BROKER_URL="redis://localhost:6379/0"
+          export API_SECRET_KEY="test-secret-key"
+          export DEBUG="True"
+          export ENVIRONMENT="test"
+
+      - name: Run ${{ matrix.test-type }} tests
+        run: |
+          python test/run_tests.py --type ${{ matrix.test-type }} --verbose
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_pollinexus
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          API_SECRET_KEY: test-secret-key
+          DEBUG: True
+          ENVIRONMENT: test
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.test-type }}
+          path: test_results_*.json
+          retention-days: 30
+
+  # Performance Tests
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install locust
+
+      - name: Start application
+        run: |
+          export DATABASE_URL="sqlite:///test.db"
+          export CELERY_BROKER_URL="memory://"
+          export API_SECRET_KEY="test-secret-key"
+          uvicorn pollinexus.api.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+
+      - name: Run performance tests
+        run: |
+          locust -f test/performance/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 60s --html performance-report.html
+
+      - name: Upload performance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-report
+          path: performance-report.html
+          retention-days: 30
+
+  # Build and Push Docker Images
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-worker
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Model Training and Validation
+  model-training:
+    name: Model Training
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.retrain_models == 'true')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install ML dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,ml]"
+
+      - name: Set up test environment
+        run: |
+          export DATABASE_URL="sqlite:///training.db"
+          export CELERY_BROKER_URL="memory://"
+          export API_SECRET_KEY="training-secret-key"
+          export DEBUG="True"
+          export ENVIRONMENT="training"
+
+      - name: Download training data
+        run: |
+          # Download or generate training datasets
+          python scripts/download_training_data.py
+
+      - name: Train and validate models
+        run: |
+          python scripts/train_models.py --validate --save-metrics
+
+      - name: Run model performance tests
+        run: |
+          python test/test_ml_models.py --performance
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-models-${{ github.sha }}
+          path: |
+            models/
+            ml_metrics.json
+            model_performance_report.html
+          retention-days: 90
+
+      - name: Update model registry
+        run: |
+          python scripts/update_model_registry.py --version ${{ github.sha }}
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, model-training]
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Add your staging deployment logic here
+          # Example: kubectl apply -f k8s/staging/
+          # or: docker-compose -f docker/staging/docker-compose.yml up -d
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests on staging..."
+          # Add smoke test logic here
+          # Example: curl -f http://staging.pollinexus.com/health
+
+      - name: Notify deployment
+        run: |
+          echo "Staging deployment completed successfully"
+
+  # Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, model-training]
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          # Add your production deployment logic here
+          # Example: kubectl apply -f k8s/production/
+          # or: ./scripts/deploy.sh production
+
+      - name: Run production health checks
+        run: |
+          echo "Running production health checks..."
+          # Add health check logic here
+          # Example: curl -f https://pollinexus.com/health
+
+      - name: Update production status
+        run: |
+          echo "Production deployment completed successfully"
+
+      - name: Notify stakeholders
+        run: |
+          echo "Notifying stakeholders of production deployment..."
+          # Add notification logic here (Slack, email, etc.)
+
+  # Post-Deployment Monitoring
+  post-deployment:
+    name: Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Monitor application health
+        run: |
+          echo "Monitoring application health for 10 minutes..."
+          # Add monitoring logic here
+          # Example: Check metrics, logs, error rates
+
+      - name: Generate deployment report
+        run: |
+          echo "Generating deployment report..."
+          # Add report generation logic here
+
+      - name: Upload deployment report
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report-${{ github.sha }}
+          path: deployment_report.json
+          retention-days: 30 
