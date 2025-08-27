@@ -20,6 +20,8 @@ from ..core.logging import logger, request_id, correlation_id
 from ..core.metrics import monitor_performance
 from ..core.error_tracking import track_errors, error_tracker
 from ..core.auth import get_current_user, verify_otp_and_generate_token
+from ..core.security import create_security_middleware, security_monitor
+from ..core.health import health_monitor, get_health_status, get_quick_health
 from ..services.user_service import UserService
 from .routes import datasets, analysis, visualizations
 from .models.user_models import (
@@ -66,32 +68,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add Security middleware (must be first)
+app.add_middleware(create_security_middleware)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-        "https://pollinex.us",
-        "https://www.pollinex.us"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
 
 # Add TrustedHost middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=[
-        "localhost",
-        "127.0.0.1",
-        "host.docker.internal",
-        "pollinex.us",
-        "www.pollinex.us"
-    ]
+    allowed_hosts=settings.trusted_hosts
 )
 
 
@@ -274,11 +266,11 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Health check endpoint
+# Enhanced Health check endpoints
 @app.get("/health", tags=["Health"])
 @monitor_performance("health_check")
 async def health_check():
-    """Health check endpoint for monitoring and load balancers."""
+    """Quick health check endpoint for load balancers."""
     
     req_id = request_id.get()
     corr_id = correlation_id.get()
@@ -293,26 +285,28 @@ async def health_check():
     )
     
     try:
-        # Basic health check
-        health_status = {
-            "status": "healthy",
-            "version": settings.version,
-            "environment": settings.environment,
-            "timestamp": time.time(),
+        health_status = await get_quick_health()
+        health_status.update({
             "request_id": req_id,
-            "correlation_id": corr_id
-        }
+            "correlation_id": corr_id,
+            "version": settings.version,
+            "environment": settings.environment
+        })
+        
+        # Return appropriate HTTP status code
+        status_code = 200 if health_status["status"] == "healthy" else 503
         
         logger.info(
-            "Health check completed successfully",
+            "Health check completed",
             extra={
                 "request_id": req_id,
                 "correlation_id": corr_id,
+                "status": health_status["status"],
                 "operation": "health_check"
             }
         )
         
-        return health_status
+        return JSONResponse(status_code=status_code, content=health_status)
         
     except Exception as e:
         logger.error(
@@ -328,12 +322,89 @@ async def health_check():
         return JSONResponse(
             status_code=503,
             content={
-                "status": "unhealthy",
+                "status": "critical",
+                "error": str(e),
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "version": settings.version,
+                "environment": settings.environment
+            }
+        )
+
+
+@app.get("/health/detailed", tags=["Health"])
+@monitor_performance("health_check_detailed")
+async def detailed_health_check():
+    """Comprehensive health check with all system components."""
+    
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+    
+    try:
+        health_status = await get_health_status()
+        health_status.update({
+            "request_id": req_id,
+            "correlation_id": corr_id
+        })
+        
+        # Return appropriate HTTP status code
+        status_code = 200 if health_status["status"] == "healthy" else 503
+        
+        return JSONResponse(status_code=status_code, content=health_status)
+        
+    except Exception as e:
+        logger.error(
+            "Detailed health check failed",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "health_check_detailed"
+            }
+        )
+        
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "critical",
                 "error": str(e),
                 "request_id": req_id,
                 "correlation_id": corr_id
             }
         )
+
+
+@app.get("/security/status", tags=["Security"])
+@monitor_performance("security_status")
+async def security_status():
+    """Get security monitoring status and violation summary."""
+    
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+    
+    try:
+        violation_summary = security_monitor.get_violation_summary()
+        
+        return {
+            "timestamp": time.time(),
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "security_status": "active",
+            "violations": violation_summary
+        }
+        
+    except Exception as e:
+        logger.error(
+            "Security status check failed",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "security_status"
+            }
+        )
+        
+        raise HTTPException(status_code=500, detail="Failed to retrieve security status")
 
 
 # Root endpoint
