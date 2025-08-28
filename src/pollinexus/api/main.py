@@ -5,15 +5,19 @@ This module configures the FastAPI application with all routes,
 middleware, and error handling.
 """
 
-from fastapi import FastAPI, Request, HTTPException, Depends, Body, Query
+from fastapi import FastAPI, Request, HTTPException, Depends, Body, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
 import time
 import uuid
 import traceback
 from typing import Dict, Any
+import tempfile
+import subprocess
+import shutil
+import os
 
 from ..core.config import settings
 from ..core.logging import logger, request_id, correlation_id
@@ -31,6 +35,16 @@ from .models.user_models import (
     UserResponseWithId, TokenResponse, VerificationResponse, UserResponseWithFaces
 )
 from ..core.database import create_tables
+
+try:
+    import mermaid as mermaid_py  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover
+    mermaid_py = None
+
+try:
+    import cairosvg  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover
+    cairosvg = None
 
 
 @asynccontextmanager
@@ -916,6 +930,341 @@ async def get_me(current_user: dict = Depends(get_current_user)):
             "phone": current_user["phone"],
             "faces": []
         }
+
+
+@app.get("/api/v1/diagram", tags=["📄 Project Summary"])
+async def get_architecture_diagram(format: str = "svg", background_tasks: BackgroundTasks = BackgroundTasks()):
+    """Generate the architecture diagram (Mermaid) and return as a file (SVG/PNG).
+    Requires mermaid-cli (mmdc) available in PATH.
+    """
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+
+    mermaid = (
+        "flowchart LR\n"
+        "  subgraph Clients\n"
+        "    A1[NOTEBOOK\\npollinexus-done.ipynb]\n"
+        "    A2[cURL/HTTP Tools\\n(API.md steps)]\n"
+        "    A3[Makefile\\nmake run-local|run-docker|run-remote]\n"
+        "  end\n\n"
+        "  subgraph API Layer (FastAPI)\n"
+        "    B1[FastAPI App\\n/health /info /metrics]\n"
+        "    B2[Routers\\nDatasets / Analysis / Visualizations / User]\n"
+        "    B3[Models & Validation\\nPydantic]\n"
+        "    B4[Middleware\\nSecurity, CORS, Logging, Errors]\n"
+        "  end\n\n"
+        "  subgraph Services (Domain Logic)\n"
+        "    C1[Dataset Service\\nvalidate, profile, checksum]\n"
+        "    C2[Analysis Service\\nbee prefs, recs,\\nseasonal, site compare]\n"
+        "    C3[Visualization Service\\nplots, dashboard]\n"
+        "    C4[User Service\\nregister, OTP, JWT]\n"
+        "  end\n\n"
+        "  subgraph Background Tasks\n"
+        "    D1[Celery Workers\\nasync jobs]\n"
+        "    D2[Task Routing & Monitoring]\n"
+        "  end\n\n"
+        "  subgraph Data Layer\n"
+        "    E1[(DuckDB)\\nanalytics + CRUD]\n"
+        "    E2[(Filesystem)\\nuploads / visualizations]\n"
+        "    E3[(Redis)\\nstatus, ephemeral]\n"
+        "  end\n\n"
+        "  subgraph Observability\n"
+        "    F1[Health & Detailed Health]\n"
+        "    F2[Metrics]\n"
+        "    F3[Structured Logging\\ncorrelation_id / request_id]\n"
+        "    F4[Security Status]\n"
+        "  end\n\n"
+        "  A1 -->|interactive cells| B1\n"
+        "  A2 -->|HTTP requests| B1\n"
+        "  A3 -->|run targets| B1\n\n"
+        "  B1 --> B4\n"
+        "  B1 --> B2\n"
+        "  B2 --> B3\n"
+        "  B2 -->|datasets| C1\n"
+        "  B2 -->|analysis| C2\n"
+        "  B2 -->|visualizations| C3\n"
+        "  B2 -->|user| C4\n\n"
+        "  C2 -->|enqueue| D1\n"
+        "  C3 -->|enqueue| D1\n"
+        "  D1 --> D2\n\n"
+        "  C1 --> E1\n"
+        "  C1 --> E2\n"
+        "  C2 --> E1\n"
+        "  C3 --> E1\n"
+        "  C3 --> E2\n"
+        "  D1 --> E3\n\n"
+        "  D2 -->|job status| B1\n"
+        "  E3 -->|task status| B1\n"
+        "  E2 -->|download link| B1\n\n"
+        "  B1 --> F1\n"
+        "  B1 --> F2\n"
+        "  B1 --> F3\n"
+        "  B1 --> F4\n"
+    )
+
+    fmt = (format or "svg").lower()
+    if fmt not in {"svg", "png"}:
+        raise HTTPException(status_code=400, detail="Invalid format. Use 'svg' or 'png'.")
+
+    # Preferred: Python renderer (mermaid-py)
+    if mermaid_py is not None:
+        try:
+            logger.info(
+                "Rendering diagram using mermaid-py",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "operation": "mermaid_py_render",
+                    "component": "project_summary",
+                    "format": fmt,
+                },
+            )
+            svg_content = None
+            # Try common APIs for mermaid-py
+            try:
+                svg_content = mermaid_py.Mermaid(mermaid).render()
+            except Exception:
+                try:
+                    # Some variants expose a functional render
+                    svg_content = mermaid_py.render(mermaid)
+                except Exception as e:
+                    logger.error(
+                        "mermaid-py render failed",
+                        extra={
+                            "request_id": req_id,
+                            "correlation_id": corr_id,
+                            "error": str(e),
+                        },
+                    )
+                    svg_content = None
+
+            if not svg_content:
+                raise RuntimeError("mermaid-py did not return SVG content")
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                if fmt == "svg":
+                    final_dir = tempfile.mkdtemp()
+                    final_path = os.path.join(final_dir, "pollinexus_architecture.svg")
+                    with open(final_path, "w", encoding="utf-8") as fsvg:
+                        fsvg.write(svg_content)
+                    media_type = "image/svg+xml"
+                else:  # png
+                    if cairosvg is None:
+                        raise HTTPException(
+                            status_code=501,
+                            detail=(
+                                "cairosvg not available for PNG conversion. Install with: pip install cairosvg"
+                            ),
+                        )
+                    # Convert SVG -> PNG
+                    final_dir = tempfile.mkdtemp()
+                    final_path = os.path.join(final_dir, "pollinexus_architecture.png")
+                    cairosvg.svg2png(bytestring=svg_content.encode("utf-8"), write_to=final_path)
+                    media_type = "image/png"
+
+                filename = os.path.basename(final_path)
+
+                def _cleanup(path: str, dirpath: str):
+                    try:
+                        if os.path.exists(path):
+                            os.remove(path)
+                        if os.path.isdir(dirpath):
+                            shutil.rmtree(dirpath, ignore_errors=True)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to cleanup temp diagram files",
+                            extra={
+                                "request_id": req_id,
+                                "correlation_id": corr_id,
+                                "error": str(e),
+                            },
+                        )
+
+                background_tasks.add_task(_cleanup, final_path, final_dir)
+
+                logger.info(
+                    "Diagram generated successfully (mermaid-py)",
+                    extra={
+                        "request_id": req_id,
+                        "correlation_id": corr_id,
+                        "operation": "mermaid_py_render",
+                        "component": "project_summary",
+                        "format": fmt,
+                        "file": filename,
+                    },
+                )
+                return FileResponse(path=final_path, media_type=media_type, filename=filename)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                "Unexpected error during mermaid-py rendering; will attempt mmdc fallback",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "operation": "mermaid_py_render_error",
+                    "error": str(e),
+                },
+            )
+    else:
+        logger.info(
+            "mermaid-py not available; will attempt mmdc fallback",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "operation": "mermaid_py_missing",
+            },
+        )
+
+    # Fallback: mmdc (Node CLI)
+    mmdc_path = shutil.which("mmdc")
+    if not mmdc_path:
+        # Attempt auto-install in development only
+        if settings.is_development:
+            npm_path = shutil.which("npm")
+            if npm_path:
+                try:
+                    logger.warning(
+                        "Mermaid CLI not found. Attempting npm global install (@mermaid-js/mermaid-cli)",
+                        extra={
+                            "request_id": req_id,
+                            "correlation_id": corr_id,
+                            "operation": "mmdc_auto_install",
+                            "component": "project_summary",
+                        },
+                    )
+                    npm_bin_proc = subprocess.run(
+                        [npm_path, "bin", "-g"], capture_output=True, text=True, timeout=20
+                    )
+                    npm_bin_dir = npm_bin_proc.stdout.strip() if npm_bin_proc.returncode == 0 else ""
+                    install_proc = subprocess.run(
+                        [npm_path, "i", "-g", "@mermaid-js/mermaid-cli"],
+                        capture_output=True,
+                        text=True,
+                        timeout=180,
+                    )
+                    if install_proc.returncode == 0 and npm_bin_dir and os.path.isdir(npm_bin_dir):
+                        os.environ["PATH"] = npm_bin_dir + os.pathsep + os.environ.get("PATH", "")
+                    else:
+                        logger.error(
+                            "npm install of mermaid-cli failed",
+                            extra={
+                                "request_id": req_id,
+                                "correlation_id": corr_id,
+                                "stderr": install_proc.stderr if install_proc else None,
+                                "stdout": install_proc.stdout if install_proc else None,
+                            },
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Unexpected error during mermaid-cli auto-install",
+                        extra={
+                            "request_id": req_id,
+                            "correlation_id": corr_id,
+                            "operation": "mmdc_auto_install_error",
+                            "error": str(e),
+                        },
+                    )
+        mmdc_path = shutil.which("mmdc")
+        if not mmdc_path:
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    "Mermaid renderer not available. Install Python mermaid-py (pip install mermaid-py)"
+                    " or Node mmdc (@mermaid-js/mermaid-cli)."
+                ),
+            )
+
+    # Existing mmdc rendering block remains unchanged below
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "diagram.mmd")
+        out_path = os.path.join(tmpdir, f"diagram.{fmt}")
+        try:
+            with open(src_path, "w", encoding="utf-8") as f:
+                f.write(mermaid)
+            cmd = [mmdc_path, "-i", src_path, "-o", out_path]
+            cmd += ["-e", fmt]
+            logger.info(
+                "Generating diagram via mermaid-cli",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "operation": "mmdc_render",
+                    "component": "project_summary",
+                    "format": fmt,
+                },
+            )
+            completed = subprocess.run(cmd, cwd=tmpdir, timeout=30, capture_output=True, text=True)
+            if completed.returncode != 0 or not os.path.exists(out_path):
+                logger.error(
+                    "Diagram generation failed",
+                    extra={
+                        "request_id": req_id,
+                        "correlation_id": corr_id,
+                        "stderr": completed.stderr,
+                        "stdout": completed.stdout,
+                        "operation": "mmdc_render",
+                        "format": fmt,
+                    },
+                )
+                raise HTTPException(status_code=500, detail="Failed to generate diagram")
+            final_dir = tempfile.mkdtemp()
+            final_path = os.path.join(final_dir, f"pollinexus_architecture.{fmt}")
+            shutil.move(out_path, final_path)
+            media_type = "image/svg+xml" if fmt == "svg" else "image/png"
+            filename = os.path.basename(final_path)
+            def _cleanup(path: str, dirpath: str):
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                    if os.path.isdir(dirpath):
+                        shutil.rmtree(dirpath, ignore_errors=True)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to cleanup temp diagram files",
+                        extra={
+                            "request_id": req_id,
+                            "correlation_id": corr_id,
+                            "error": str(e),
+                        },
+                    )
+            background_tasks.add_task(_cleanup, final_path, final_dir)
+            logger.info(
+                "Diagram generated successfully",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "operation": "mmdc_render",
+                    "component": "project_summary",
+                    "format": fmt,
+                    "file": filename,
+                },
+            )
+            return FileResponse(path=final_path, media_type=media_type, filename=filename)
+        except subprocess.TimeoutExpired:
+            logger.error(
+                "Diagram generation timed out",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "operation": "mmdc_render_timeout",
+                    "format": fmt,
+                },
+            )
+            raise HTTPException(status_code=504, detail="Diagram generation timed out")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                "Unexpected error during diagram generation",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "operation": "mmdc_render_error",
+                    "error": str(e),
+                },
+            )
+            raise HTTPException(status_code=500, detail="Unexpected error during diagram generation")
 
 
 if __name__ == "__main__":

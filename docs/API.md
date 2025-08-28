@@ -21,30 +21,22 @@ Follow these steps to validate the API end-to-end. Replace placeholders like <EM
 
 >> First, I’ll spin up the API using the project’s Makefile so the environment is reproducible and aligned with dev workflows.
 
-- Quick start (local, with uv):
+- Local API (uv):
 
 ```bash
-make quick-start-local
+make run-local
 ```
 
-- Starts FastAPI at <http://0.0.0.0:8000> and Jupyter Lab at <http://0.0.0.0:8888>
-
-- Or start just the API (local):
+- Docker API:
 
 ```bash
-make dev-local
+make run-docker
 ```
 
-- Docker option (API only):
+- Remote VM API:
 
 ```bash
-make dev-docker
-```
-
-- Remote VM option:
-
-```bash
-make dev-remote
+make run-remote
 ```
 
 ## 1) Health, info, quick checks
