@@ -66,23 +66,13 @@ help:
 	@echo "  build       - Build the application"
 	@echo "  train       - Train ML models"
 	@echo "  run         - Run the application"
-	@echo "  dev         - Run in development mode"
-	@echo "  prod        - Run in production mode"
-	@echo "  setup       - Setup local development environment"
+	@echo "  clean       - Clean build artifacts"
+	@echo "  verify      - Run tests, linting, formatting"
 	@echo ""
 	@echo "$(GREEN)Environments:$(NC)"
 	@echo "  local       - Local development with uv"
 	@echo "  docker      - Docker development"
 	@echo "  remote      - Remote VM deployment (Vagrant)"
-	@echo ""
-	@echo "$(GREEN)Utility Targets:$(NC)"
-	@echo "  install     - Install dependencies"
-	@echo "  test        - Run tests"
-	@echo "  lint        - Run linting"
-	@echo "  format      - Format code"
-	@echo "  clean       - Clean build artifacts"
-	@echo "  vagrant-up  - Start Vagrant VM"
-	@echo "  vagrant-down - Stop Vagrant VM"
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make build           - Build with default environment (local)"
@@ -90,9 +80,7 @@ help:
 	@echo "  make build local     - Build locally with uv (alternative syntax)"
 	@echo "  make train docker    - Train with Docker"
 	@echo "  make run remote      - Run in Vagrant VM"
-	@echo "  make dev local       - Local development"
-	@echo "  make prod docker     - Docker production"
-	@echo "  make setup           - Setup local development environment"
+	@echo "  make verify local    - Run all tests and checks locally"
 
 # Main targets with environment routing
 build:
@@ -118,6 +106,14 @@ run:
 run-%:
 	@echo "$(BLUE)Running for environment: $*$(NC)"
 	@$(MAKE) run-$*
+
+verify:
+	@echo "$(BLUE)Verifying for environment: $(ENV)$(NC)"
+	@$(MAKE) verify-$(ENV)
+
+verify-%:
+	@echo "$(BLUE)Verifying for environment: $*$(NC)"
+	@$(MAKE) verify-$*
 
 # Local development targets (using uv)
 build-local:
@@ -147,6 +143,7 @@ run-local:
 		echo "$(RED)uv is not installed. Please install uv first.$(NC)"; \
 		exit 1; \
 	fi
+	@$(MAKE) ensure-redis
 	@echo "$(GREEN)Starting FastAPI server...$(NC)"
 	@POLLINEXUS_DISABLE_SECURITY_FOR_LOCAL=true $(UV) run uvicorn pollinexus.api.main:app \
 		--host $(DEV_HOST) \
@@ -157,28 +154,22 @@ run-local:
 		$(UV) run jupyter lab --no-browser --NotebookApp.token='' --NotebookApp.password='' --ip=$(DEV_HOST) --port=8888 --notebook-dir=src/pollinexus/notebook
 	@echo "$(GREEN)Application running at http://$(DEV_HOST):$(DEV_PORT)$(NC)"
 	@echo "$(GREEN)Jupyter Lab running at http://$(DEV_HOST):8888$(NC)"
-	
 
-dev-local:
-	@echo "$(GREEN)Starting development server locally...$(NC)"
-	@$(MAKE) build-local
-	@echo "$(GREEN)Starting development server with auto-reload...$(NC)"
-	@$(UV) run uvicorn pollinexus.api.main:app \
-		--host $(DEV_HOST) \
-		--port $(DEV_PORT) \
-		--reload \
-		--workers 1
-
-prod-local:
-	@echo "$(GREEN)Starting production server locally...$(NC)"
-	@$(MAKE) build-local
-	@echo "$(GREEN)Starting production server with Gunicorn...$(NC)"
-	@$(UV) run gunicorn pollinexus.api.main:app \
-		--bind $(PROD_HOST):$(PROD_PORT) \
-		--workers $(PROD_WORKERS) \
-		--worker-class uvicorn.workers.UvicornWorker \
-		--timeout 30 \
-		--keep-alive 5
+verify-local:
+	@echo "$(GREEN)Running comprehensive verification locally...$(NC)"
+	@if ! command -v $(UV) >/dev/null 2>&1; then \
+		echo "$(RED)uv is not installed. Please install uv first.$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Running tests...$(NC)"
+	@$(UV) run pytest test/ -v --cov=pollinexus
+	@echo "$(GREEN)Running linting...$(NC)"
+	@$(UV) run flake8 src/ test/
+	@$(UV) run mypy src/
+	@echo "$(GREEN)Running formatting check...$(NC)"
+	@$(UV) run black --check src/ test/
+	@$(UV) run isort --check-only src/ test/
+	@echo "$(GREEN)Verification complete!$(NC)"
 
 # Docker development targets
 build-docker:
@@ -196,20 +187,12 @@ run-docker:
 	@$(DOCKER_COMPOSE) up --build
 	@echo "$(GREEN)Docker application stopped.$(NC)"
 
-dev-docker:
-	@echo "$(GREEN)Starting development environment with Docker...$(NC)"
-	@$(DOCKER_COMPOSE) up --build -d
-	@echo "$(GREEN)Development environment started!$(NC)"
-	@echo "$(BLUE)API available at: http://localhost:$(DEV_PORT)$(NC)"
-	@echo "$(BLUE)Docs available at: http://localhost:$(DEV_PORT)/docs$(NC)"
-	@echo "$(YELLOW)Use 'make logs-docker' to view logs$(NC)"
-
-prod-docker:
-	@echo "$(GREEN)Starting production environment with Docker...$(NC)"
-	@$(DOCKER_COMPOSE_PROD) up --build -d
-	@echo "$(GREEN)Production environment started!$(NC)"
-	@echo "$(BLUE)API available at: http://localhost:$(PROD_PORT)$(NC)"
-	@echo "$(YELLOW)Use 'make logs-docker' to view logs$(NC)"
+verify-docker:
+	@echo "$(GREEN)Running verification with Docker...$(NC)"
+	@$(DOCKER_COMPOSE) run --rm app pytest test/ -v --cov=pollinexus
+	@$(DOCKER_COMPOSE) run --rm app flake8 src/ test/
+	@$(DOCKER_COMPOSE) run --rm app mypy src/
+	@echo "$(GREEN)Docker verification complete!$(NC)"
 
 # Remote deployment targets (Vagrant)
 build-remote:
@@ -232,17 +215,13 @@ run-remote:
 	@echo "$(GREEN)Starting FastAPI server in VM...$(NC)"
 	@$(VAGRANT) ssh -c "cd /vagrant && uv run uvicorn pollinexus.api.main:app --host 0.0.0.0 --port $(DEV_PORT) --reload"
 
-dev-remote:
-	@echo "$(GREEN)Starting development server in remote VM...$(NC)"
-	@$(MAKE) build-remote
-	@echo "$(GREEN)Starting development server with auto-reload in VM...$(NC)"
-	@$(VAGRANT) ssh -c "cd /vagrant && uv run uvicorn pollinexus.api.main:app --host 0.0.0.0 --port $(DEV_PORT) --reload --workers 1"
-
-prod-remote:
-	@echo "$(GREEN)Starting production server in remote VM...$(NC)"
-	@$(MAKE) build-remote
-	@echo "$(GREEN)Starting production server with Gunicorn in VM...$(NC)"
-	@$(VAGRANT) ssh -c "cd /vagrant && uv run gunicorn pollinexus.api.main:app --bind 0.0.0.0:$(PROD_PORT) --workers $(PROD_WORKERS) --worker-class uvicorn.workers.UvicornWorker --timeout 30 --keep-alive 5"
+verify-remote:
+	@echo "$(GREEN)Running verification in remote VM...$(NC)"
+	@$(MAKE) vagrant-up
+	@$(VAGRANT) ssh -c "cd /vagrant && uv run pytest test/ -v --cov=pollinexus"
+	@$(VAGRANT) ssh -c "cd /vagrant && uv run flake8 src/ test/"
+	@$(VAGRANT) ssh -c "cd /vagrant && uv run mypy src/"
+	@echo "$(GREEN)Remote verification complete!$(NC)"
 
 # Vagrant management
 vagrant-up:
@@ -282,6 +261,45 @@ install:
 	fi
 	@echo "$(GREEN)Dependencies installed!$(NC)"
 
+ensure-redis:
+	@echo "$(GREEN)Ensuring Redis is installed (local mode)...$(NC)"
+	@if command -v redis-server >/dev/null 2>&1; then \
+		echo "$(BLUE)redis-server found$(NC)"; \
+	else \
+		OS_NAME="$$(uname -s)"; \
+		echo "$(YELLOW)redis-server not found. Attempting installation for $$OS_NAME...$(NC)"; \
+		case "$$OS_NAME" in \
+			Linux*) \
+				if command -v apt-get >/dev/null 2>&1; then \
+					sudo apt-get update && sudo apt-get install -y redis-server; \
+				else \
+					echo "$(RED)apt-get not found. Please install Redis manually.$(NC)"; \
+					exit 1; \
+				fi ;; \
+			Darwin*) \
+				if command -v brew >/dev/null 2>&1; then \
+					brew update && brew install redis; \
+				else \
+					echo "$(RED)Homebrew not found. Please install Homebrew or Redis manually.$(NC)"; \
+					exit 1; \
+				fi ;; \
+			MINGW*|MSYS*|CYGWIN*) \
+				if command -v winget >/dev/null 2>&1; then \
+					winget install -e --id Memurai.MemuraiDeveloper --accept-package-agreements --accept-source-agreements || true; \
+					if ! command -v redis-server >/dev/null 2>&1; then \
+						echo "$(YELLOW)Memurai installed as a Redis-compatible server. Ensure it is available in PATH or running as a service.$(NC)"; \
+					fi; \
+				else \
+					echo "$(RED)winget not found. Please install Redis (or Memurai) manually.$(NC)"; \
+					exit 1; \
+				fi ;; \
+			*) \
+				echo "$(RED)Unsupported OS for automatic Redis installation.$(NC)"; \
+				exit 1 ;; \
+		esac; \
+	fi
+	@echo "$(GREEN)Redis check complete.$(NC)"
+
 test:
 	@echo "$(GREEN)Running tests...$(NC)"
 	@if command -v $(UV) >/dev/null 2>&1; then \
@@ -314,10 +332,26 @@ clean:
 	@echo "$(GREEN)Cleaning build artifacts...$(NC)"
 	@rm -rf build/
 	@rm -rf dist/
+	@rm -rf .venv/
 	@rm -rf *.egg-info/
-	@find . -type d -name __pycache__ -delete
+	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete
 	@echo "$(GREEN)Clean complete!$(NC)"
+
+clean-local:
+	@echo "$(GREEN)Cleaning local artifacts...$(NC)"
+	@rm -rf build/
+	@rm -rf dist/
+	@rm -rf *.egg-info/
+	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete
+	@echo "$(GREEN)Local clean complete!$(NC)"
+
+clean-docker:
+	@echo "$(GREEN)Cleaning Docker artifacts...$(NC)"
+	@$(DOCKER_COMPOSE) down --volumes --remove-orphans
+	@docker system prune -f
+	@echo "$(GREEN)Docker clean complete!$(NC)"
 
 # Docker utility targets
 logs-docker:
@@ -375,19 +409,6 @@ health-detailed:
 	@echo "$(GREEN)Checking detailed application health...$(NC)"
 	@curl -f http://localhost:$(DEV_PORT)/health/detailed || echo "$(RED)Detailed health check failed$(NC)"
 
-# Quick start targets
-quick-start-local:
-	@echo "$(GREEN)Quick start - Local development with uv...$(NC)"
-	@$(MAKE) dev-local
-
-quick-start-docker:
-	@echo "$(GREEN)Quick start - Docker development...$(NC)"
-	@$(MAKE) dev-docker
-
-quick-start-remote:
-	@echo "$(GREEN)Quick start - Remote VM development...$(NC)"
-	@$(MAKE) dev-remote
-
 # Show current environment and tools
 env-info:
 	@echo "$(BLUE)Environment Information:$(NC)"
@@ -436,3 +457,14 @@ setup-remote:
 setup:
 	@echo "$(BLUE)Setting up local development environment...$(NC)"
 	@python -m pollinexus.cli setup 
+
+# KISS Principle Rules - DO NOT ADD NEW ARGUMENTS OR COMPLEX TARGETS
+# 
+# 1. Only use existing target patterns: build, train, run, clean, verify
+# 2. Only use existing environments: local, docker, remote  
+# 3. Never add new command-line arguments or parameters
+# 4. Keep targets simple and focused on one task
+# 5. Use existing infrastructure (uv, docker-compose, vagrant)
+# 6. Auto-install dependencies within existing targets (like ensure-redis)
+# 7. Maintain the pattern: make <target> <environment>
+# 8. No new "dev", "prod", "setup" style targets - use existing ones 

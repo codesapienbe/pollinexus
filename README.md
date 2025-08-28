@@ -1,346 +1,173 @@
-# 🐝 Pollinexus - Data-Driven Pollinator Conservation API
+# 🐝 Pollinexus - Data-Driven Pollinator Conservation Platform
 
-A comprehensive API platform for environmental agencies to analyze pollinator data, generate insights, and support conservation efforts through machine learning and data science.
+A comprehensive data science platform for environmental agencies to analyze pollinator data, generate insights, and support conservation efforts through machine learning and advanced analytics.
 
-## 🚀 Current Status
+## 🎯 Overview
 
-**Sprint 3 Complete** ✅ - All core API endpoints implemented with comprehensive logging, monitoring, and security features.
+Pollinexus transforms raw pollinator observation data into actionable conservation insights. The platform leverages machine learning to identify bee species preferences, predict optimal plant combinations, and analyze seasonal patterns across different habitats.
 
-### ✅ Completed Features
+**Key Capabilities:**
 
-- **Core API Infrastructure**
-  - FastAPI application with comprehensive middleware
-  - Structured logging with OpenTelemetry compatibility
-  - Error tracking and monitoring
-  - Performance metrics collection
-  - Health check endpoints
+- **Species Preference Analysis**: ML-driven identification of bee-plant relationships
+- **Habitat Optimization**: Data-driven recommendations for pollinator-friendly environments  
+- **Seasonal Pattern Recognition**: Time-series analysis of pollinator activity
+- **Predictive Modeling**: Forecast pollinator presence based on environmental factors
+- **Interactive Visualizations**: Dynamic dashboards for data exploration
 
-- **Data Management**
-  - Dataset upload and validation
-  - CSV file processing with security checks
-  - Data cleaning and preprocessing
-  - Database persistence with PostgreSQL
-  - DuckDB integration for analytics
-
-- **Analysis Engine**
-  - Bee species preference analysis
-  - Plant recommendation generation
-  - Seasonal pattern analysis
-  - Site comparison analytics
-  - Machine learning model integration
-
-- **Background Processing**
-  - Celery task queue integration
-  - Asynchronous job processing
-  - Task status tracking
-  - Result caching with Redis
-
-- **User Management**
-  - User registration and authentication
-  - OTP-based verification system
-  - Role-based access control
-  - Session management
-
-- **Visualization Services**
-  - Interactive chart generation
-  - Dashboard creation
-  - Batch visualization processing
-  - Multiple output formats
-
-- **Security Features**
-  - Input validation and sanitization
-  - SQL injection prevention
-  - XSS protection
-  - File upload security
-  - Rate limiting
-  - CORS configuration
-
-## 🎯 Next Steps: Sprint 4 - Testing & Quality Assurance
-
-### Immediate Priorities
-
-1. **Comprehensive Testing Suite** 🔄
-   - Unit tests for all components
-   - Integration tests for API endpoints
-   - Security vulnerability testing
-   - Performance and load testing
-   - Database migration testing
-
-2. **Production Deployment** 🚀
-   - Docker containerization
-   - Kubernetes deployment manifests
-   - CI/CD pipeline setup
-   - Monitoring and alerting
-   - Backup and disaster recovery
-
-3. **Documentation & Training** 📚
-   - API documentation updates
-   - User guides and tutorials
-   - Developer onboarding materials
-   - Deployment runbooks
-
-## 🛠️ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.12+
-- Docker and Docker Compose
-- PostgreSQL 15+
-- Redis 7+
+- Docker (optional, for containerized deployment)
+- Redis (auto-installed on local runs)
 
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/pollinexus.git
-cd pollinexus
-
-# Install dependencies
-pip install -e ".[dev]"
-
-# Set up environment
-cp env.example .env
-# Edit .env with your configuration
-
-# Initialize database
-python -m pollinexus.cli init_db
-
-# Start development server
-uvicorn pollinexus.api.main:app --reload
-
-# Start Celery worker (in new terminal)
-celery -A pollinexus.tasks.celery_app worker --loglevel=info
-```
-
-### Production Deployment
+### Local Development
 
 ```bash
-# Deploy to production
-./scripts/deploy.sh production
+# Build and run locally
+make build-local
+make run-local
 
-# Monitor deployment
-docker-compose -f docker/production/docker-compose.yml logs -f
-
-# Access services
-# API: http://localhost
-# Grafana: http://localhost:3000
-# Prometheus: http://localhost:9090
-# Kibana: http://localhost:5601
+# Or use the quick start
+make run
 ```
 
-## 🚀 CI/CD/CT Pipeline
-
-### Pipeline Validation
+### Docker Deployment
 
 ```bash
-# Make validation script executable
-chmod +x scripts/validate_pipeline.sh
-
-# Run comprehensive pipeline validation
-./scripts/validate_pipeline.sh
-
-# Or run quick validation
-python test/run_tests.py --type all --verbose
+# Build and run with Docker
+make build-docker  
+make run-docker
 ```
 
-### Manual Pipeline Trigger
-
-1. **Navigate to GitHub Actions**:
-   - Go to your repository on GitHub
-   - Click on the "Actions" tab
-   - Select "CI/CD Pipeline" workflow
-
-2. **Trigger Manual Run**:
-   - Click "Run workflow" button
-   - Select branch: `main` or `develop`
-   - Choose environment: `staging` or `production`
-   - Enable "Retrain models" if needed
-   - Click "Run workflow"
-
-### Pipeline Features
-
-#### ✅ **Continuous Integration**
-
-- **Security Scanning**: Trivy, Bandit, Safety
-- **Code Quality**: Black, isort, Flake8, MyPy, Pylint
-- **Testing**: Unit, integration, API, security, performance tests
-- **Coverage**: Automated test coverage reporting
-
-#### ✅ **Continuous Deployment**
-
-- **Multi-environment**: Staging and production deployments
-- **Docker**: Automated image building and pushing
-- **Kubernetes**: Production-ready deployment manifests
-- **Rollback**: Automated rollback capabilities
-
-#### ✅ **Continuous Training**
-
-- **Model Training**: Automated ML model retraining
-- **Model Registry**: Version tracking and performance monitoring
-- **Data Validation**: Automated data quality checks
-- **Performance Monitoring**: Model drift detection
-
-## 📊 API Endpoints
-
-### Datasets
-
-- `POST /api/v1/datasets/` - Upload dataset
-- `GET /api/v1/datasets/` - List datasets
-- `GET /api/v1/datasets/{id}` - Get dataset
-- `DELETE /api/v1/datasets/{id}` - Delete dataset
-- `GET /api/v1/datasets/{id}/info` - Dataset statistics
-- `GET /api/v1/datasets/search` - Search datasets
-
-### Analysis
-
-- `POST /api/v1/analysis/bee-preferences/` - Start bee analysis
-- `POST /api/v1/analysis/plant-recommendations/` - Generate recommendations
-- `GET /api/v1/analysis/jobs/{id}` - Get job status
-- `GET /api/v1/analysis/jobs/{id}/results` - Get results
-
-### Visualizations
-
-- `POST /api/v1/visualizations/bee-distribution/` - Create bee charts
-- `POST /api/v1/visualizations/seasonal-patterns/` - Seasonal analysis
-- `POST /api/v1/visualizations/dashboard/` - Generate dashboard
-- `GET /api/v1/visualizations/{id}/download` - Download visualization
-
-### User Management
-
-- `POST /api/v1/user/register` - Register user
-- `POST /api/v1/user/login` - Login
-- `POST /api/v1/user/verify-registration` - Verify account
-- `GET /api/v1/user/me` - Get user profile
-
-## 🔧 Testing
-
-### Run All Tests
+### Remote VM Deployment
 
 ```bash
-# Run comprehensive test suite
-python test/run_tests.py --type all
-
-# Run specific test categories
-python test/run_tests.py --type security
-python test/run_tests.py --type performance
-python test/run_tests.py --type api
+# Deploy to remote VM (requires Vagrant)
+make build-remote
+make run-remote
 ```
 
-### Test Categories
+## 🔬 Core Workflows
 
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: Component interaction testing
-- **API Tests**: Endpoint functionality testing
-- **Security Tests**: Vulnerability and security testing
-- **Performance Tests**: Load and stress testing
-- **Database Tests**: Data persistence testing
+### Data Analysis Pipeline
 
-## 📈 Monitoring & Observability
+```bash
+# Upload and process dataset
+curl -X POST "http://localhost:8000/api/v1/datasets/" \
+  -F "file=@dataset/plants_and_bees.csv"
 
-### Metrics Collection
+# Run bee preference analysis
+curl -X POST "http://localhost:8000/api/v1/analysis/bee-preferences/" \
+  -H "Content-Type: application/json" \
+  -d '{"dataset_id": 1, "analysis_type": "species_preference"}'
 
-- **Prometheus**: System and application metrics
-- **Grafana**: Visualization and dashboards
-- **Elasticsearch**: Log aggregation and search
-- **Kibana**: Log visualization and analysis
+# Generate visualizations
+curl -X POST "http://localhost:8000/api/v1/visualizations/bee-distribution/" \
+  -H "Content-Type: application/json" \
+  -d '{"dataset_id": 1, "chart_type": "species_distribution"}'
+```
 
-### Health Checks
+### Model Training
 
-- Application health: `/health`
-- Database connectivity
-- Redis connectivity
-- Celery worker status
-- External service dependencies
+```bash
+# Train ML models locally
+make train-local
 
-### Logging
+# Train with Docker
+make train-docker
 
-- Structured JSON logging
-- Request/response correlation
-- Error tracking and alerting
-- Performance monitoring
-- Security event logging
+# Train on remote VM
+make train-remote
+```
 
-## 🔒 Security Features
+### Quality Assurance
 
-### Input Validation
+```bash
+# Run comprehensive verification (tests, linting, formatting)
+make verify-local
 
-- SQL injection prevention
-- XSS protection
-- File upload security
-- Path traversal prevention
-- Command injection protection
+# Verify remote deployment
+make verify-remote
+```
 
-### Authentication & Authorization
+## 📊 Data Science Features
 
-- JWT token-based authentication
-- OTP verification system
-- Role-based access control
-- Session management
-- Rate limiting
+### Machine Learning Models
 
-### Data Protection
+- **Species Classification**: Identify bee species from observation data
+- **Preference Prediction**: Predict plant preferences for different bee species
+- **Habitat Suitability**: Assess environmental factors for pollinator success
+- **Seasonal Forecasting**: Predict pollinator activity patterns
 
-- Sensitive data encryption
-- Secure file handling
-- Audit logging
-- Backup encryption
-- Network security
+### Analytics Capabilities
+
+- **Statistical Analysis**: Correlation studies, significance testing
+- **Geospatial Analysis**: Location-based pattern recognition
+- **Time Series Analysis**: Seasonal and trend analysis
+- **Clustering**: Identify similar habitats and species groups
+
+### Visualization Engine
+
+- **Interactive Charts**: Dynamic species distribution maps
+- **Dashboard Generation**: Automated report creation
+- **Export Capabilities**: Multiple format support (PNG, PDF, SVG)
+- **Real-time Updates**: Live data visualization
+
+## 🏗️ Architecture
+
+The platform follows a microservices architecture with:
+
+- **FastAPI Backend**: High-performance API with async processing
+- **Celery Task Queue**: Background job processing for heavy computations
+- **PostgreSQL**: Primary data storage with advanced querying
+- **DuckDB**: Analytics engine for complex data operations
+- **Redis**: Caching and session management
+- **ML Pipeline**: Automated model training and deployment
 
 ## 📚 Documentation
 
-### Core Docs
+- **[API Documentation](docs/API.md)** - Complete endpoint reference
+- **[Architecture Guide](docs/ARCHITECTURE.md)** - System design and components
+- **[Contributing Guidelines](docs/CONTRIBUTING.md)** - Development workflow
+- **[API Groups](docs/api-groups/)** - Organized endpoint documentation
 
-- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)**
-- **[docs/CODE_OF_CONDUCT.md](docs/CODE_OF_CONDUCT.md)**
-- **[docs/CHANGELOG.md](docs/CHANGELOG.md)**
+## 🔧 Available Commands
 
-### API Documentation (by Tag Group)
+```bash
+# Build commands
+make build          # Build with default environment
+make build-local    # Build locally
+make build-docker   # Build with Docker
+make build-remote   # Build on remote VM
 
-- **[docs/api-groups/api-health-info.md](docs/api-groups/api-health-info.md)**
-- **[docs/api-groups/api-auth.md](docs/api-groups/api-auth.md)**
-- **[docs/api-groups/api-datasets.md](docs/api-groups/api-datasets.md)**
-- **[docs/api-groups/api-analysis.md](docs/api-groups/api-analysis.md)**
-- **[docs/api-groups/api-visualizations.md](docs/api-groups/api-visualizations.md)**
-- **[docs/api-groups/api-monitoring.md](docs/api-groups/api-monitoring.md)**
+# Run commands  
+make run            # Run with default environment
+make run-local      # Run locally
+make run-docker     # Run with Docker
+make run-remote     # Run on remote VM
+
+# Training commands
+make train          # Train with default environment
+make train-local    # Train locally
+make train-docker   # Train with Docker
+make train-remote   # Train on remote VM
+
+# Utility commands
+make clean-local    # Clean local artifacts
+make clean-docker   # Clean Docker artifacts
+make verify-local   # Run all tests and checks
+make verify-remote  # Verify remote deployment
+```
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Run the test suite
-6. Submit a pull request
-
-### Code Quality
-
-- Type hints required
-- Comprehensive test coverage
-- Security review for all changes
-- Performance testing for new features
-- Documentation updates
+See [Contributing Guidelines](docs/CONTRIBUTING.md) for development workflow and code standards.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Environmental agencies for domain expertise
-- Open source community for tools and libraries
-- Research institutions for pollinator data
-- Conservation organizations for guidance
-
-## 📞 Support
-
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/your-username/pollinexus/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/pollinexus/discussions)
-- **Email**: <contact@pollinexus.org>
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
