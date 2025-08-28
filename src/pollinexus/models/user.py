@@ -6,7 +6,6 @@ authentication, and authorization using DuckDB.
 """
 
 from sqlalchemy import Column, String, Boolean, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from datetime import datetime
 

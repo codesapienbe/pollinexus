@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     max_login_attempts: int = 5
     lockout_duration: int = 900  # 15 minutes in seconds
     
+    # Development security settings
+    disable_security_for_local: bool = False  # Disable security features for local development
+    
     # Production settings
     debug: bool = False
     reload: bool = False

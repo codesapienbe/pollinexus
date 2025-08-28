@@ -301,6 +301,21 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         """Process request through security checks."""
         client_ip = self._get_client_ip(request)
         
+        # Skip security checks if disabled for local development
+        if settings.disable_security_for_local:
+            logger.debug(
+                "Security checks bypassed for local development",
+                extra={
+                    "client_ip": client_ip,
+                    "url": str(request.url),
+                    "operation": "security_bypass"
+                }
+            )
+            response = await call_next(request)
+            # Still add basic security headers
+            self._add_basic_security_headers(response)
+            return response
+        
         # Check if IP is blocked
         if self.security_monitor.is_ip_blocked(client_ip):
             logger.warning(f"Blocked IP {client_ip} attempted access")
@@ -403,6 +418,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Limit"] = str(rate_info["max_requests"])
         response.headers["X-RateLimit-Remaining"] = str(rate_info["remaining"])
         response.headers["X-RateLimit-Reset"] = str(rate_info["reset_time"])
+
+    def _add_basic_security_headers(self, response: Response):
+        """Add basic security headers when security is disabled."""
+        # Basic security headers only
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
 
 
 # Global instances

@@ -19,8 +19,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .logging import logger
-from .database import get_db
-from .metrics import ResourceMonitor
+from .database import SessionLocal
 
 
 class HealthStatus(Enum):
@@ -51,6 +50,18 @@ class HealthResult:
     duration: float = 0.0
     timestamp: float = field(default_factory=time.time)
     error: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "name": self.name,
+            "status": self.status.value,
+            "message": self.message,
+            "details": self.details,
+            "duration": self.duration,
+            "timestamp": self.timestamp,
+            "error": self.error
+        }
 
 
 class HealthMonitor:
@@ -101,7 +112,7 @@ class HealthMonitor:
             critical=False
         )
     
-    def register_check(self, name: str, check_function: Callable, 
+    def register_check(self, name: str, check_function: Callable[[], Awaitable[Dict[str, Any]]], 
                       timeout: float = 30.0, critical: bool = True, enabled: bool = True):
         """Register a new health check."""
         self.checks[name] = HealthCheck(
@@ -141,22 +152,51 @@ class HealthMonitor:
         
         try:
             # Run check with timeout
+            logger.debug(f"Running health check: {name}")
+            
+            # Ensure the check function is callable
+            if not callable(check.check_function):
+                raise ValueError(f"Health check function for {name} is not callable")
+            
+            # Call the check function and await the result
+            check_result = check.check_function()
+            
+            # Ensure we got a coroutine
+            if not asyncio.iscoroutine(check_result):
+                raise ValueError(f"Health check function for {name} did not return a coroutine")
+            
             result = await asyncio.wait_for(
-                check.check_function(),
+                check_result,
                 timeout=check.timeout
             )
             
             duration = time.time() - start_time
             
+            # Validate result structure
+            if not isinstance(result, dict):
+                raise ValueError(f"Health check {name} returned {type(result).__name__}, expected dict")
+            
+            if "status" not in result:
+                raise ValueError(f"Health check {name} missing 'status' field")
+            
+            # Safely convert status string to HealthStatus enum
+            status_str = result.get("status", "unknown")
+            try:
+                status_enum = HealthStatus(status_str)
+            except ValueError:
+                status_enum = HealthStatus.UNKNOWN
+                logger.warning(f"Invalid health status '{status_str}' for check {name}, using UNKNOWN")
+            
             health_result = HealthResult(
                 name=name,
-                status=HealthStatus(result.get("status", "unknown")),
+                status=status_enum,
                 message=result.get("message", ""),
                 details=result.get("details", {}),
                 duration=duration
             )
             
             self.last_results[name] = health_result
+            logger.debug(f"Health check {name} completed successfully")
             return health_result
             
         except asyncio.TimeoutError:
@@ -206,6 +246,10 @@ class HealthMonitor:
         start_time = time.time()
         results = {}
         
+        logger.debug("Starting health checks", extra={
+            "enabled_checks": [name for name, check in self.checks.items() if check.enabled]
+        })
+        
         # Run all checks concurrently
         tasks = {
             name: self.run_check(name) 
@@ -213,44 +257,85 @@ class HealthMonitor:
             if check.enabled
         }
         
-        completed_results = await asyncio.gather(
-            *tasks.values(), return_exceptions=True
-        )
-        
-        # Process results
-        for name, result in zip(tasks.keys(), completed_results):
-            if isinstance(result, Exception):
+        try:
+            completed_results = await asyncio.gather(
+                *tasks.values(), return_exceptions=True
+            )
+            
+            # Process results
+            for name, result in zip(tasks.keys(), completed_results):
+                if isinstance(result, Exception):
+                    logger.error(f"Health check {name} failed with exception", extra={
+                        "health_check": name,
+                        "error": str(result),
+                        "error_type": type(result).__name__
+                    })
+                    results[name] = HealthResult(
+                        name=name,
+                        status=HealthStatus.CRITICAL,
+                        message="Health check exception",
+                        error=str(result)
+                    )
+                else:
+                    results[name] = result
+                    
+        except Exception as e:
+            logger.error("Failed to gather health check results", extra={
+                "error": str(e),
+                "error_type": type(e).__name__
+            })
+            # Create error results for all checks
+            for name in tasks.keys():
                 results[name] = HealthResult(
                     name=name,
                     status=HealthStatus.CRITICAL,
-                    message="Health check exception",
-                    error=str(result)
+                    message="Health check gathering failed",
+                    error=str(e)
                 )
-            else:
-                results[name] = result
         
         # Calculate overall status
         overall_status = self._calculate_overall_status(results)
         total_duration = time.time() - start_time
         
-        return {
+        # Convert all HealthResult objects to plain dictionaries
+        checks_dict = {}
+        for name, result in results.items():
+            try:
+                checks_dict[name] = result.to_dict()
+            except Exception as e:
+                logger.error(f"Failed to convert health result for {name}", extra={
+                    "health_check": name,
+                    "error": str(e),
+                    "result_type": type(result).__name__
+                })
+                # Create a fallback result
+                checks_dict[name] = {
+                    "name": name,
+                    "status": "critical",
+                    "message": "Failed to serialize result",
+                    "details": {},
+                    "duration": 0.0,
+                    "timestamp": time.time(),
+                    "error": str(e)
+                }
+        
+        result_dict = {
             "status": overall_status.value,
             "timestamp": time.time(),
             "duration": total_duration,
             "uptime": time.time() - self.startup_time,
             "version": settings.version,
             "environment": settings.environment,
-            "checks": {
-                name: {
-                    "status": result.status.value,
-                    "message": result.message,
-                    "duration": result.duration,
-                    "details": result.details,
-                    "error": result.error
-                }
-                for name, result in results.items()
-            }
+            "checks": checks_dict
         }
+        
+        logger.debug("Health checks completed", extra={
+            "overall_status": overall_status.value,
+            "total_duration": total_duration,
+            "checks_count": len(checks_dict)
+        })
+        
+        return result_dict
     
     def _calculate_overall_status(self, results: Dict[str, HealthResult]) -> HealthStatus:
         """Calculate overall system health status."""
@@ -280,41 +365,45 @@ class HealthMonitor:
     async def _check_database(self) -> Dict[str, Any]:
         """Check database connectivity and performance."""
         try:
-            db = next(get_db())
+            # Create a session directly instead of using the generator
+            db = SessionLocal()
             start_time = time.time()
             
-            # Test basic connectivity
-            result = db.execute(text("SELECT 1"))
-            query_time = time.time() - start_time
-            
-            # Get database info if possible
             try:
-                db_size = db.execute(text("SELECT pg_database_size(current_database())")).scalar()
-            except:
-                db_size = None  # DuckDB doesn't support this
-            
-            db.close()
-            
-            status = HealthStatus.HEALTHY
-            message = "Database connection healthy"
-            
-            # Check query performance
-            if query_time > 1.0:
-                status = HealthStatus.WARNING
-                message = "Database query slow"
-            elif query_time > 5.0:
-                status = HealthStatus.CRITICAL
-                message = "Database query very slow"
-            
-            return {
-                "status": status.value,
-                "message": message,
-                "details": {
-                    "query_time": query_time,
-                    "database_size": db_size,
-                    "connection_pool_size": settings.database_pool_size
+                # Test basic connectivity
+                from sqlalchemy import text
+                result = db.execute(text("SELECT 1"))
+                query_time = time.time() - start_time
+                
+                # Get database info if possible
+                try:
+                    db_size = db.execute(text("SELECT pg_database_size(current_database())")).scalar()
+                except:
+                    db_size = None  # DuckDB doesn't support this
+                
+                status = HealthStatus.HEALTHY
+                message = "Database connection healthy"
+                
+                # Check query performance
+                if query_time > 1.0:
+                    status = HealthStatus.WARNING
+                    message = "Database query slow"
+                elif query_time > 5.0:
+                    status = HealthStatus.CRITICAL
+                    message = "Database query very slow"
+                
+                return {
+                    "status": status.value,
+                    "message": message,
+                    "details": {
+                        "query_time": query_time,
+                        "database_size": db_size,
+                        "connection_pool_size": settings.database_pool_size
+                    }
                 }
-            }
+                
+            finally:
+                db.close()
             
         except Exception as e:
             return {
@@ -536,7 +625,52 @@ health_monitor = HealthMonitor()
 # Convenience functions for common health checks
 async def get_health_status() -> Dict[str, Any]:
     """Get comprehensive health status."""
-    return await health_monitor.run_all_checks()
+    try:
+        result = await health_monitor.run_all_checks()
+        
+        # Ensure the result is JSON serializable
+        if not isinstance(result, dict):
+            raise ValueError(f"Health monitor returned {type(result).__name__}, expected dict")
+        
+        logger.debug("Health status check completed", extra={
+            "result_type": type(result).__name__,
+            "result_keys": list(result.keys()) if isinstance(result, dict) else "not_dict"
+        })
+        
+        # Validate the result structure
+        required_keys = ["status", "timestamp", "checks"]
+        missing_keys = [key for key in required_keys if key not in result]
+        if missing_keys:
+            raise ValueError(f"Health status result missing required keys: {missing_keys}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Health status check failed", extra={
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
+        
+        # Return a fallback response instead of raising
+        return {
+            "status": "critical",
+            "timestamp": time.time(),
+            "duration": 0.0,
+            "uptime": time.time() - health_monitor.startup_time,
+            "version": getattr(settings, 'version', 'unknown'),
+            "environment": getattr(settings, 'environment', 'unknown'),
+            "checks": {
+                "error": {
+                    "name": "error",
+                    "status": "critical",
+                    "message": "Health check system error",
+                    "details": {},
+                    "duration": 0.0,
+                    "timestamp": time.time(),
+                    "error": str(e)
+                }
+            }
+        }
 
 
 async def get_quick_health() -> Dict[str, Any]:
@@ -546,25 +680,42 @@ async def get_quick_health() -> Dict[str, Any]:
     results = {}
     for check_name in essential_checks:
         if check_name in health_monitor.checks:
-            results[check_name] = await health_monitor.run_check(check_name)
+            result = await health_monitor.run_check(check_name)
+            # Convert HealthResult to plain dictionary
+            results[check_name] = result.to_dict()
     
-    overall_status = health_monitor._calculate_overall_status(results)
+    # Calculate overall status from the converted results
+    critical_failures = []
+    warnings = []
+    
+    for name, result in results.items():
+        check = health_monitor.checks.get(name)
+        if not check:
+            continue
+        
+        if result["status"] == "critical":
+            if check.critical:
+                critical_failures.append(name)
+            else:
+                warnings.append(name)
+        elif result["status"] == "warning":
+            warnings.append(name)
+    
+    if critical_failures:
+        overall_status = "critical"
+    elif warnings:
+        overall_status = "warning"
+    else:
+        overall_status = "healthy"
     
     return {
-        "status": overall_status.value,
+        "status": overall_status,
         "timestamp": time.time(),
-        "checks": {
-            name: {
-                "status": result.status.value,
-                "message": result.message,
-                "duration": result.duration
-            }
-            for name, result in results.items()
-        }
+        "checks": results
     }
 
 
-def register_health_check(name: str, check_function: Callable, 
+def register_health_check(name: str, check_function: Callable[[], Awaitable[Dict[str, Any]]], 
                          timeout: float = 30.0, critical: bool = True):
     """Register a custom health check."""
     health_monitor.register_check(name, check_function, timeout, critical)

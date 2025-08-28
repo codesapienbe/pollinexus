@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from ..core.logging import logger
-from ..core.database import get_db
+from ..core.database import get_db, SessionLocal
 from ..core.config import settings
 
 
@@ -42,11 +42,10 @@ class UserService:
     @staticmethod
     def create_user(full_name: str, email: str, phone: str, password: Optional[str] = None) -> Dict:
         """Create a new user"""
+        db = SessionLocal()
         try:
             user_id = str(uuid.uuid4())
             hashed_password = UserService.hash_password(password) if password else None
-            
-            db = next(get_db())
             
             # Check if user already exists
             result = db.execute(
@@ -96,12 +95,14 @@ class UserService:
             logger.error(f"Error creating user: {e}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail="Internal server error")
+        finally:
+            db.close()
     
     @staticmethod
     def get_user_by_email(email: str) -> Optional[Dict]:
         """Get user by email"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             
             result = db.execute(
                 text("""
@@ -133,7 +134,7 @@ class UserService:
     def get_user_by_phone(phone: str) -> Optional[Dict]:
         """Get user by phone number"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             
             result = db.execute(
                 text("""
@@ -165,7 +166,7 @@ class UserService:
     def get_user_by_id(user_id: str) -> Optional[Dict]:
         """Get user by ID"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             
             result = db.execute(
                 text("""
@@ -199,7 +200,7 @@ class UserService:
         try:
             offset = (page - 1) * size
             
-            db = next(get_db())
+            db = SessionLocal()
             
             # Get total count
             total_result = db.execute(
@@ -260,7 +261,7 @@ class UserService:
             if not update_fields:
                 return False
             
-            db = next(get_db())
+            db = SessionLocal()
             
             set_clause = ", ".join([f"{field} = :{field}" for field in update_fields.keys()])
             update_fields["user_id"] = user_id
@@ -287,7 +288,7 @@ class UserService:
             otp = UserService.generate_otp()
             expires_at = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
             
-            db = next(get_db())
+            db = SessionLocal()
             
             # Clear any existing unused OTPs for this user
             db.execute(
@@ -328,7 +329,7 @@ class UserService:
             if not otp:
                 raise HTTPException(status_code=400, detail="OTP is required")
             
-            db = next(get_db())
+            db = SessionLocal()
             
             if email:
                 result = db.execute(
@@ -377,7 +378,7 @@ class UserService:
         try:
             expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
             
-            db = next(get_db())
+            db = SessionLocal()
             
             db.execute(
                 text("""
@@ -403,7 +404,7 @@ class UserService:
     def validate_session(token_hash: str) -> Optional[str]:
         """Validate session and return user_id if valid"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             
             result = db.execute(
                 text("""
@@ -423,7 +424,7 @@ class UserService:
     def delete_session(token_hash: str) -> bool:
         """Delete a user session"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             
             db.execute(
                 text("DELETE FROM user_sessions WHERE token_hash = :token_hash"),

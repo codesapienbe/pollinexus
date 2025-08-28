@@ -25,7 +25,7 @@ class ErrorRecord:
     request_id: Optional[str] = None
     correlation_id: Optional[str] = None
     user_id: Optional[str] = None
-    context: Dict[str, Any] = None
+    context: Optional[Dict[str, Any]] = None
     severity: str = "ERROR"
     stack_trace: Optional[str] = None
     
@@ -93,12 +93,14 @@ class ErrorTracker:
             # Log error
             logger.error(
                 f"Error tracked: {error_type}",
-                error_type=error_type,
-                error_message=error_message,
-                severity=severity,
-                request_id=error_record.request_id,
-                correlation_id=error_record.correlation_id,
-                context=context
+                extra={
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "severity": severity,
+                    "request_id": error_record.request_id,
+                    "correlation_id": error_record.correlation_id,
+                    "context": context
+                }
             )
     
     def _check_alerts(self, error_type: str):
@@ -126,9 +128,11 @@ class ErrorTracker:
         # Log alert
         logger.warning(
             f"Error alert triggered: {error_type}",
-            error_type=error_type,
-            count=count,
-            threshold=self.alert_threshold
+            extra={
+                "error_type": error_type,
+                "count": count,
+                "threshold": self.alert_threshold
+            }
         )
     
     def add_alert_callback(self, callback: Callable[[Dict[str, Any]], None]):
@@ -264,13 +268,18 @@ error_tracker = ErrorTracker()
 
 
 def track_errors(operation: str):
-    """Decorator to track errors in functions."""
+    """Decorator to track errors in functions.
+    Preserves function signature for FastAPI and supports async/sync callables.
+    """
+    import inspect
+    import functools
+
     def decorator(func):
-        def wrapper(*args, **kwargs):
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs):
             try:
-                return func(*args, **kwargs)
+                return await func(*args, **kwargs)
             except Exception as e:
-                # Track the error
                 error_tracker.track_error(
                     error_type=f"{operation}_error",
                     error_message=str(e),
@@ -283,7 +292,39 @@ def track_errors(operation: str):
                     stack_trace=str(e.__traceback__) if e.__traceback__ else None
                 )
                 raise
-        return wrapper
+
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                error_tracker.track_error(
+                    error_type=f"{operation}_error",
+                    error_message=str(e),
+                    context={
+                        "function": func.__name__,
+                        "operation": operation,
+                        "args_count": len(args),
+                        "kwargs_keys": list(kwargs.keys())
+                    },
+                    stack_trace=str(e.__traceback__) if e.__traceback__ else None
+                )
+                raise
+
+        # Choose appropriate wrapper and preserve signature for FastAPI docs
+        if inspect.iscoroutinefunction(func):
+            try:
+                async_wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            return async_wrapper
+        else:
+            try:
+                sync_wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            return sync_wrapper
+
     return decorator
 
 

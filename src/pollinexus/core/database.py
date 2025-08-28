@@ -21,10 +21,9 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     settings.database_url,
     echo=settings.debug,  # Log SQL queries in debug mode
-    # DuckDB-specific optimizations
+    # DuckDB-specific optimizations - only use compatible arguments
     connect_args={
         "read_only": False,
-        "threads": 4,  # Number of threads for parallel processing
     }
 )
 
@@ -93,7 +92,8 @@ def check_database_connection() -> bool:
     """
     try:
         with engine.connect() as connection:
-            connection.execute("SELECT 1")
+            from sqlalchemy import text
+            connection.execute(text("SELECT 1"))
         logger.info("Database connection successful")
         return True
     except Exception as e:

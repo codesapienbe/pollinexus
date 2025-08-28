@@ -76,7 +76,9 @@ help:
 	@echo "  vagrant-down - Stop Vagrant VM"
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
-	@echo "  make build local     - Build locally with uv"
+	@echo "  make build           - Build with default environment (local)"
+	@echo "  make build ENV=local - Build locally with uv"
+	@echo "  make build local     - Build locally with uv (alternative syntax)"
 	@echo "  make train docker    - Train with Docker"
 	@echo "  make run remote      - Run in Vagrant VM"
 	@echo "  make dev local       - Local development"
@@ -87,21 +89,41 @@ build:
 	@echo "$(BLUE)Building for environment: $(ENV)$(NC)"
 	@$(MAKE) build-$(ENV)
 
+build-%:
+	@echo "$(BLUE)Building for environment: $*$(NC)"
+	@$(MAKE) build-$*
+
 train:
 	@echo "$(BLUE)Training for environment: $(ENV)$(NC)"
 	@$(MAKE) train-$(ENV)
+
+train-%:
+	@echo "$(BLUE)Training for environment: $*$(NC)"
+	@$(MAKE) train-$*
 
 run:
 	@echo "$(BLUE)Running for environment: $(ENV)$(NC)"
 	@$(MAKE) run-$(ENV)
 
+run-%:
+	@echo "$(BLUE)Running for environment: $*$(NC)"
+	@$(MAKE) run-$*
+
 dev:
 	@echo "$(BLUE)Starting development for environment: $(ENV)$(NC)"
 	@$(MAKE) dev-$(ENV)
 
+dev-%:
+	@echo "$(BLUE)Starting development for environment: $*$(NC)"
+	@$(MAKE) dev-$*
+
 prod:
 	@echo "$(BLUE)Starting production for environment: $(ENV)$(NC)"
 	@$(MAKE) prod-$(ENV)
+
+prod-%:
+	@echo "$(BLUE)Starting production for environment: $*$(NC)"
+	@$(MAKE) prod-$*
 
 # Local development targets (using uv)
 build-local:
@@ -132,10 +154,10 @@ run-local:
 		exit 1; \
 	fi
 	@echo "$(GREEN)Starting FastAPI server...$(NC)"
-	@$(UV) run uvicorn pollinexus.api.main:app \
+	@POLLINEXUS_DISABLE_SECURITY_FOR_LOCAL=true $(UV) run uvicorn pollinexus.api.main:app \
 		--host $(DEV_HOST) \
 		--port $(DEV_PORT) \
-		--reload $(DEV_RELOAD) \
+		$(if $(filter true,$(DEV_RELOAD)),--reload) \
 		--workers $(DEV_WORKERS)
 
 dev-local:

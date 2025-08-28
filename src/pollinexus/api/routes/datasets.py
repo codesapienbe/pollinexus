@@ -29,8 +29,6 @@ router = APIRouter()
 @monitor_performance("api_dataset_create")
 @track_errors("api_dataset_upload")
 async def create_dataset(
-    name: str = Query(..., description="Dataset name"),
-    description: Optional[str] = Query(None, description="Dataset description"),
     file: UploadFile = File(..., description="Dataset file (CSV, Excel, Parquet)"),
     db: Session = Depends(get_db)
 ):
@@ -41,12 +39,13 @@ async def create_dataset(
     
     logger.info(
         "Dataset upload request received",
-        request_id=req_id,
-        correlation_id=corr_id,
-        dataset_name=name,
-        file_name=file.filename,
-        file_size=file.size,
-        operation="api_dataset_upload"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "file_name": getattr(file, "filename", None),
+            "file_size": getattr(file, "size", None),
+            "operation": "api_dataset_upload"
+        }
     )
     
     start_time = time.time()
@@ -54,17 +53,20 @@ async def create_dataset(
     try:
         # Validate file type
         allowed_extensions = ['.csv', '.xlsx', '.xls', '.parquet']
-        file_extension = PathLib(file.filename).suffix.lower()
+        provided_filename = getattr(file, "filename", None) or "dataset.csv"
+        file_extension = PathLib(provided_filename).suffix.lower()
         
         if file_extension not in allowed_extensions:
             logger.warning(
                 "Invalid file type attempted",
-                request_id=req_id,
-                correlation_id=corr_id,
-                file_name=file.filename,
-                file_extension=file_extension,
-                allowed_extensions=allowed_extensions,
-                operation="api_dataset_upload"
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "file_name": provided_filename,
+                    "file_extension": file_extension,
+                    "allowed_extensions": allowed_extensions,
+                    "operation": "api_dataset_upload"
+                }
             )
             raise HTTPException(
                 status_code=400, 
@@ -77,7 +79,8 @@ async def create_dataset(
         
         # Generate unique filename
         timestamp = int(time.time())
-        safe_filename = f"{timestamp}_{file.filename.replace(' ', '_')}"
+        sanitized_original = provided_filename.replace(' ', '_')
+        safe_filename = f"{timestamp}_{sanitized_original}"
         file_path = upload_dir / safe_filename
         
         # Save file
@@ -86,10 +89,12 @@ async def create_dataset(
         
         logger.debug(
             "File saved successfully",
-            request_id=req_id,
-            correlation_id=corr_id,
-            file_path=str(file_path),
-            operation="api_dataset_upload"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "file_path": str(file_path),
+                "operation": "api_dataset_upload"
+            }
         )
         
         # Validate dataset
@@ -100,12 +105,14 @@ async def create_dataset(
             
             logger.info(
                 "Dataset validation completed",
-                request_id=req_id,
-                correlation_id=corr_id,
-                validation_result=validation['is_valid'],
-                errors_count=len(validation['errors']),
-                warnings_count=len(validation['warnings']),
-                operation="api_dataset_upload"
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "validation_result": validation['is_valid'],
+                    "errors_count": len(validation['errors']),
+                    "warnings_count": len(validation['warnings']),
+                    "operation": "api_dataset_upload"
+                }
             )
             
             if not validation['is_valid']:
@@ -120,18 +127,21 @@ async def create_dataset(
                 os.remove(file_path)
             logger.error(
                 "Dataset validation failed",
-                request_id=req_id,
-                correlation_id=corr_id,
-                error=str(e),
-                operation="api_dataset_upload"
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "error": str(e),
+                    "operation": "api_dataset_upload"
+                }
             )
             raise HTTPException(status_code=400, detail=f"Error loading dataset: {str(e)}")
         
-        # Create dataset record
+        # Create dataset record (derive name from filename; no description for MVP)
         db_service = DatabaseService(db)
+        dataset_name = PathLib(provided_filename).stem or f"dataset_{timestamp}"
         dataset_create = DatasetCreate(
-            name=name,
-            description=description,
+            name=dataset_name,
+            description=None,
             file_path=str(file_path)
         )
         dataset = db_service.create_dataset(dataset_create)
@@ -140,12 +150,14 @@ async def create_dataset(
         
         logger.info(
             "Dataset created successfully via API",
-            request_id=req_id,
-            correlation_id=corr_id,
-            dataset_id=dataset.id,
-            dataset_name=name,
-            operation_time=operation_time,
-            operation="api_dataset_upload"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "dataset_id": dataset.id,
+                "dataset_name": dataset_name,
+                "operation_time": operation_time,
+                "operation": "api_dataset_upload"
+            }
         )
         
         return dataset
@@ -155,17 +167,19 @@ async def create_dataset(
     except Exception as e:
         logger.error(
             "Unexpected error in dataset upload",
-            request_id=req_id,
-            correlation_id=corr_id,
-            error=str(e),
-            operation="api_dataset_upload"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "api_dataset_upload"
+            }
         )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/datasets/", response_model=DatasetListResponse)
 @monitor_performance("api_dataset_list")
 @track_errors("api_dataset_list")
+@router.get("/datasets/", response_model=DatasetListResponse)
 async def list_datasets(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of records to return"),
@@ -230,9 +244,9 @@ async def list_datasets(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/datasets/{dataset_id}", response_model=DatasetResponse)
 @monitor_performance("api_dataset_get")
 @track_errors("api_dataset_get")
+@router.get("/datasets/{dataset_id}", response_model=DatasetResponse)
 async def get_dataset(
     dataset_id: int = Path(..., description="Dataset ID"),
     db: Session = Depends(get_db)

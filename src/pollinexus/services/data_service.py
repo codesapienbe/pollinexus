@@ -23,7 +23,7 @@ class DataService:
     
     def __init__(self):
         self.supported_formats = ['.csv', '.xlsx', '.xls', '.parquet']
-        logger.info("DataService initialized", supported_formats=self.supported_formats)
+        logger.info("DataService initialized", extra={"supported_formats": self.supported_formats})
     
     @monitor_performance("data_load")
     @track_errors("data_load")
@@ -43,16 +43,14 @@ class DataService:
         """
         logger.info(
             "Starting dataset load operation",
-            file_path=file_path,
-            operation="data_load"
+            extra={"file_path": file_path, "operation": "data_load"}
         )
         
         path = Path(file_path)
         if not path.exists():
             logger.error(
                 "File not found",
-                file_path=file_path,
-                operation="data_load"
+                extra={"file_path": file_path, "operation": "data_load"}
             )
             raise FileNotFoundError(f"File not found: {file_path}")
         
@@ -60,21 +58,23 @@ class DataService:
         
         try:
             if path.suffix.lower() == '.csv':
-                logger.debug("Loading CSV file", file_path=file_path)
+                logger.debug("Loading CSV file", extra={"file_path": file_path})
                 data = pd.read_csv(file_path)
             elif path.suffix.lower() in ['.xlsx', '.xls']:
-                logger.debug("Loading Excel file", file_path=file_path)
+                logger.debug("Loading Excel file", extra={"file_path": file_path})
                 data = pd.read_excel(file_path)
             elif path.suffix.lower() == '.parquet':
-                logger.debug("Loading Parquet file", file_path=file_path)
+                logger.debug("Loading Parquet file", extra={"file_path": file_path})
                 data = pd.read_parquet(file_path)
             else:
                 logger.error(
                     "Unsupported file format",
-                    file_path=file_path,
-                    file_extension=path.suffix,
-                    supported_formats=self.supported_formats,
-                    operation="data_load"
+                    extra={
+                        "file_path": file_path,
+                        "file_extension": path.suffix,
+                        "supported_formats": self.supported_formats,
+                        "operation": "data_load"
+                    }
                 )
                 raise ValueError(f"Unsupported file format: {path.suffix}")
             
@@ -82,12 +82,14 @@ class DataService:
             
             logger.info(
                 "Dataset loaded successfully",
-                file_path=file_path,
-                rows=len(data),
-                columns=len(data.columns),
-                load_time=load_time,
-                memory_usage_mb=data.memory_usage(deep=True).sum() / 1024 / 1024,
-                operation="data_load"
+                extra={
+                    "file_path": file_path,
+                    "rows": len(data),
+                    "columns": len(data.columns),
+                    "load_time": load_time,
+                    "memory_usage_mb": data.memory_usage(deep=True).sum() / 1024 / 1024,
+                    "operation": "data_load"
+                }
             )
             
             return data
@@ -95,9 +97,7 @@ class DataService:
         except Exception as e:
             logger.error(
                 "Dataset load failed",
-                file_path=file_path,
-                error=str(e),
-                operation="data_load"
+                extra={"file_path": file_path, "error": str(e), "operation": "data_load"}
             )
             raise
     
@@ -115,9 +115,7 @@ class DataService:
         """
         logger.info(
             "Starting dataset validation",
-            rows=len(data),
-            columns=len(data.columns),
-            operation="data_validation"
+            extra={"rows": len(data), "columns": len(data.columns), "operation": "data_validation"}
         )
         
         validation_result = {
@@ -143,8 +141,7 @@ class DataService:
                 validation_result['errors'].append(f"Missing required columns: {missing_columns}")
                 logger.warning(
                     "Missing required columns detected",
-                    missing_columns=missing_columns,
-                    operation="data_validation"
+                    extra={"missing_columns": missing_columns, "operation": "data_validation"}
                 )
             
             # Check data types
@@ -163,8 +160,7 @@ class DataService:
             if type_issues:
                 logger.warning(
                     "Data type issues detected",
-                    type_issues=type_issues,
-                    operation="data_validation"
+                    extra={"type_issues": type_issues, "operation": "data_validation"}
                 )
             
             # Check for missing values
@@ -178,10 +174,7 @@ class DataService:
                 
                 logger.info(
                     "Missing values detected",
-                    total_missing=int(total_missing),
-                    missing_percentage=float(total_missing / len(data) * 100),
-                    missing_by_column=missing_counts.to_dict(),
-                    operation="data_validation"
+                    extra={"total_missing": int(total_missing), "missing_percentage": float(total_missing / len(data) * 100), "missing_by_column": missing_counts.to_dict(), "operation": "data_validation"}
                 )
             
             # Check for duplicates
@@ -192,8 +185,7 @@ class DataService:
                 
                 logger.warning(
                     "Duplicate rows detected",
-                    duplicate_count=int(duplicate_count),
-                    operation="data_validation"
+                    extra={"duplicate_count": int(duplicate_count), "operation": "data_validation"}
                 )
             
             # Check data ranges
@@ -211,8 +203,7 @@ class DataService:
                 validation_result['warnings'].extend(range_issues)
                 logger.warning(
                     "Data range issues detected",
-                    range_issues=range_issues,
-                    operation="data_validation"
+                    extra={"range_issues": range_issues, "operation": "data_validation"}
                 )
             
             # Calculate validation summary
@@ -231,11 +222,13 @@ class DataService:
             
             logger.info(
                 "Dataset validation completed",
-                is_valid=validation_result['is_valid'],
-                errors_count=len(validation_result['errors']),
-                warnings_count=len(validation_result['warnings']),
-                validation_time=validation_time,
-                operation="data_validation"
+                extra={
+                    "is_valid": validation_result['is_valid'],
+                    "errors_count": len(validation_result['errors']),
+                    "warnings_count": len(validation_result['warnings']),
+                    "validation_time": validation_time,
+                    "operation": "data_validation"
+                }
             )
             
             return validation_result
@@ -243,8 +236,7 @@ class DataService:
         except Exception as e:
             logger.error(
                 "Dataset validation failed",
-                error=str(e),
-                operation="data_validation"
+                extra={"error": str(e), "operation": "data_validation"}
             )
             validation_result['is_valid'] = False
             validation_result['errors'].append(f"Validation error: {str(e)}")
@@ -264,9 +256,7 @@ class DataService:
         """
         logger.info(
             "Starting dataset cleaning",
-            original_rows=len(data),
-            original_columns=len(data.columns),
-            operation="data_cleaning"
+            extra={"original_rows": len(data), "original_columns": len(data.columns), "operation": "data_cleaning"}
         )
         
         start_time = time.time()
@@ -314,10 +304,7 @@ class DataService:
                 if outliers_count > 0:
                     logger.debug(
                         "Handling outliers in bees_num",
-                        outliers_count=int(outliers_count),
-                        lower_bound=float(lower_bound),
-                        upper_bound=float(upper_bound),
-                        operation="data_cleaning"
+                        extra={"outliers_count": int(outliers_count), "lower_bound": float(lower_bound), "upper_bound": float(upper_bound), "operation": "data_cleaning"}
                     )
                     # Cap outliers instead of removing them
                     cleaned_data.loc[cleaned_data['bees_num'] < lower_bound, 'bees_num'] = lower_bound
@@ -359,8 +346,7 @@ class DataService:
         except Exception as e:
             logger.error(
                 "Dataset cleaning failed",
-                error=str(e),
-                operation="data_cleaning"
+                extra={"error": str(e), "operation": "data_cleaning"}
             )
             raise
     
@@ -442,8 +428,7 @@ class DataService:
         except Exception as e:
             logger.error(
                 "Dataset information generation failed",
-                error=str(e),
-                operation="dataset_info"
+                extra={"error": str(e), "operation": "dataset_info"}
             )
             raise
     
@@ -463,11 +448,7 @@ class DataService:
         """
         logger.info(
             "Starting dataset export",
-            output_path=output_path,
-            format=format,
-            rows=len(data),
-            columns=len(data.columns),
-            operation="data_export"
+            extra={"output_path": output_path, "format": format, "rows": len(data), "columns": len(data.columns), "operation": "data_export"}
         )
         
         start_time = time.time()
@@ -508,10 +489,7 @@ class DataService:
         except Exception as e:
             logger.error(
                 "Dataset export failed",
-                output_path=output_path,
-                format=format,
-                error=str(e),
-                operation="data_export"
+                extra={"output_path": output_path, "format": format, "error": str(e), "operation": "data_export"}
             )
             raise
     
@@ -531,19 +509,14 @@ class DataService:
         """
         logger.info(
             "Creating dataset sample",
-            original_rows=len(data),
-            sample_size=sample_size,
-            random_state=random_state,
-            operation="data_sampling"
+            extra={"original_rows": len(data), "sample_size": sample_size, "random_state": random_state, "operation": "data_sampling"}
         )
         
         try:
             if sample_size >= len(data):
                 logger.warning(
                     "Sample size larger than dataset, returning full dataset",
-                    sample_size=sample_size,
-                    dataset_size=len(data),
-                    operation="data_sampling"
+                    extra={"sample_size": sample_size, "dataset_size": len(data), "operation": "data_sampling"}
                 )
                 return data
             
@@ -551,10 +524,7 @@ class DataService:
             
             logger.info(
                 "Dataset sample created successfully",
-                original_rows=len(data),
-                sampled_rows=len(sampled_data),
-                sample_percentage=(len(sampled_data) / len(data)) * 100,
-                operation="data_sampling"
+                extra={"original_rows": len(data), "sampled_rows": len(sampled_data), "sample_percentage": (len(sampled_data) / len(data)) * 100, "operation": "data_sampling"}
             )
             
             return sampled_data
@@ -562,7 +532,6 @@ class DataService:
         except Exception as e:
             logger.error(
                 "Dataset sampling failed",
-                error=str(e),
-                operation="data_sampling"
+                extra={"error": str(e), "operation": "data_sampling"}
             )
             raise 

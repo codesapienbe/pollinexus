@@ -91,7 +91,7 @@ def monitor_performance(operation: str):
     """Decorator to monitor function performance."""
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        async def async_wrapper(*args, **kwargs):
             start_time = time.time()
             req_id = request_id.get()
             corr_id = correlation_id.get()
@@ -102,8 +102,8 @@ def monitor_performance(operation: str):
             initial_cpu = process.cpu_percent()
             
             try:
-                # Execute function
-                result = func(*args, **kwargs)
+                # Execute async function
+                result = await func(*args, **kwargs)
                 
                 # Calculate metrics
                 execution_time = time.time() - start_time
@@ -123,12 +123,14 @@ def monitor_performance(operation: str):
                 # Log performance
                 logger.info(
                     f"Performance: {operation} completed",
-                    operation=operation,
-                    execution_time=execution_time,
-                    memory_delta=final_memory - initial_memory,
-                    cpu_usage=final_cpu,
-                    request_id=req_id,
-                    correlation_id=corr_id
+                    extra={
+                        "operation": operation,
+                        "execution_time": execution_time,
+                        "memory_delta": final_memory - initial_memory,
+                        "cpu_usage": final_cpu,
+                        "request_id": req_id,
+                        "correlation_id": corr_id
+                    }
                 )
                 
                 return result
@@ -149,16 +151,104 @@ def monitor_performance(operation: str):
                 # Log error performance
                 logger.error(
                     f"Performance: {operation} failed",
-                    operation=operation,
-                    execution_time=execution_time,
-                    error=str(e),
-                    request_id=req_id,
-                    correlation_id=corr_id
+                    extra={
+                        "operation": operation,
+                        "execution_time": execution_time,
+                        "error": str(e),
+                        "request_id": req_id,
+                        "correlation_id": corr_id
+                    }
                 )
                 
                 raise
         
-        return wrapper
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            start_time = time.time()
+            req_id = request_id.get()
+            corr_id = correlation_id.get()
+            
+            # Get initial resource usage
+            process = psutil.Process()
+            initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+            initial_cpu = process.cpu_percent()
+            
+            try:
+                # Execute sync function
+                result = func(*args, **kwargs)
+                
+                # Calculate metrics
+                execution_time = time.time() - start_time
+                final_memory = process.memory_info().rss / 1024 / 1024  # MB
+                final_cpu = process.cpu_percent()
+                
+                # Record metrics
+                performance_metrics.record_metric(
+                    operation,
+                    execution_time,
+                    request_id=req_id,
+                    correlation_id=corr_id,
+                    memory_delta=final_memory - initial_memory,
+                    cpu_usage=final_cpu
+                )
+                
+                # Log performance
+                logger.info(
+                    f"Performance: {operation} completed",
+                    extra={
+                        "operation": operation,
+                        "execution_time": execution_time,
+                        "memory_delta": final_memory - initial_memory,
+                        "cpu_usage": final_cpu,
+                        "request_id": req_id,
+                        "correlation_id": corr_id
+                    }
+                )
+                
+                return result
+                
+            except Exception as e:
+                # Calculate metrics even for failed operations
+                execution_time = time.time() - start_time
+                
+                # Record metrics
+                performance_metrics.record_metric(
+                    f"{operation}_error",
+                    execution_time,
+                    request_id=req_id,
+                    correlation_id=corr_id,
+                    error=str(e)
+                )
+                
+                # Log error performance
+                logger.error(
+                    f"Performance: {operation} failed",
+                    extra={
+                        "operation": operation,
+                        "execution_time": execution_time,
+                        "error": str(e),
+                        "request_id": req_id,
+                        "correlation_id": corr_id
+                    }
+                )
+                
+                raise
+        
+        # Return the appropriate wrapper based on whether the function is async
+        import inspect
+        if inspect.iscoroutinefunction(func):
+            # Preserve original function signature for FastAPI docs
+            try:
+                async_wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            return async_wrapper
+        else:
+            try:
+                sync_wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            return sync_wrapper
     return decorator
 
 
@@ -196,13 +286,15 @@ def performance_monitor(operation: str, **context):
         # Log performance
         logger.info(
             f"Performance: {operation} completed",
-            operation=operation,
-            execution_time=execution_time,
-            memory_delta=final_memory - initial_memory,
-            cpu_usage=final_cpu,
-            request_id=req_id,
-            correlation_id=corr_id,
-            **context
+            extra={
+                "operation": operation,
+                "execution_time": execution_time,
+                "memory_delta": final_memory - initial_memory,
+                "cpu_usage": final_cpu,
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                **context
+            }
         )
         
     except Exception as e:
@@ -222,12 +314,14 @@ def performance_monitor(operation: str, **context):
         # Log error performance
         logger.error(
             f"Performance: {operation} failed",
-            operation=operation,
-            execution_time=execution_time,
-            error=str(e),
-            request_id=req_id,
-            correlation_id=corr_id,
-            **context
+            extra={
+                "operation": operation,
+                "execution_time": execution_time,
+                "error": str(e),
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                **context
+            }
         )
         
         raise

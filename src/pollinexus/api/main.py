@@ -267,7 +267,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Enhanced Health check endpoints
-@app.get("/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health API"])
 @monitor_performance("health_check")
 async def health_check():
     """Quick health check endpoint for load balancers."""
@@ -332,7 +332,7 @@ async def health_check():
         )
 
 
-@app.get("/health/detailed", tags=["Health"])
+@app.get("/api/v1/health/detailed", tags=["Health API"])
 @monitor_performance("health_check_detailed")
 async def detailed_health_check():
     """Comprehensive health check with all system components."""
@@ -342,13 +342,29 @@ async def detailed_health_check():
     
     try:
         health_status = await get_health_status()
-        health_status.update({
-            "request_id": req_id,
-            "correlation_id": corr_id
-        })
+        
+        # Ensure health_status is a dictionary
+        if not isinstance(health_status, dict):
+            logger.error("Health status is not a dictionary", extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "health_status_type": type(health_status).__name__,
+                "operation": "health_check_detailed"
+            })
+            health_status = {
+                "status": "critical",
+                "message": "Health check system error",
+                "error": "Invalid health status format"
+            }
+        
+        # Add request metadata
+        if req_id:
+            health_status["request_id"] = req_id
+        if corr_id:
+            health_status["correlation_id"] = corr_id
         
         # Return appropriate HTTP status code
-        status_code = 200 if health_status["status"] == "healthy" else 503
+        status_code = 200 if health_status.get("status") == "healthy" else 503
         
         return JSONResponse(status_code=status_code, content=health_status)
         
@@ -359,6 +375,7 @@ async def detailed_health_check():
                 "request_id": req_id,
                 "correlation_id": corr_id,
                 "error": str(e),
+                "error_type": type(e).__name__,
                 "operation": "health_check_detailed"
             }
         )
@@ -374,7 +391,7 @@ async def detailed_health_check():
         )
 
 
-@app.get("/security/status", tags=["Security"])
+@app.get("/api/v1/security/status", tags=["Security API"])
 @monitor_performance("security_status")
 async def security_status():
     """Get security monitoring status and violation summary."""
@@ -408,7 +425,7 @@ async def security_status():
 
 
 # Root endpoint
-@app.get("/", tags=["Root"])
+@app.get("/api/v1/", tags=["Root API"])
 async def root():
     """Root endpoint with API information."""
     
@@ -460,7 +477,7 @@ app.include_router(
 
 
 # API information endpoint
-@app.get("/api/v1/info", tags=["API Info"])
+@app.get("/api/v1/info", tags=["API Info API"])
 async def api_info():
     """Get comprehensive API information and capabilities."""
     
@@ -536,7 +553,7 @@ async def api_info():
 
 
 # Metrics endpoint for monitoring
-@app.get("/api/v1/metrics", tags=["Monitoring"])
+@app.get("/api/v1/metrics", tags=["Monitoring API"])
 @monitor_performance("metrics_endpoint")
 async def get_metrics():
     """Get API metrics and performance statistics."""
@@ -725,7 +742,7 @@ async def verify_login(request: VerifyOTPRequest):
     return await verify_otp_and_generate_token(request, mark_verified=False)
 
 
-@app.get("/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["User API"])
+@app.get("/api/v1/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["User API"])
 async def get_me(current_user: dict = Depends(get_current_user)):
     """Get current authenticated user's information."""
     try:
