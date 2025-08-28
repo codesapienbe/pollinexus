@@ -868,7 +868,7 @@ async def cancel_analysis_job(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/analysis/stats", tags=["📊 Exploratory Data Analysis (EDA)"])
+@router.get("/analysis/stats", tags=["🎯 Conclusions and Strategic Recommendations"])
 @monitor_performance("api_analysis_stats")
 @track_errors("api_analysis")
 async def get_analysis_statistics(

@@ -160,24 +160,25 @@ python test/run_tests.py --type all --verbose
 ### Pipeline Features
 
 #### ✅ **Continuous Integration**
+
 - **Security Scanning**: Trivy, Bandit, Safety
 - **Code Quality**: Black, isort, Flake8, MyPy, Pylint
 - **Testing**: Unit, integration, API, security, performance tests
 - **Coverage**: Automated test coverage reporting
 
 #### ✅ **Continuous Deployment**
+
 - **Multi-environment**: Staging and production deployments
 - **Docker**: Automated image building and pushing
 - **Kubernetes**: Production-ready deployment manifests
 - **Rollback**: Automated rollback capabilities
 
 #### ✅ **Continuous Training**
+
 - **Model Training**: Automated ML model retraining
 - **Model Registry**: Version tracking and performance monitoring
 - **Data Validation**: Automated data quality checks
 - **Performance Monitoring**: Model drift detection
-
-For detailed pipeline documentation, see: [CI/CD Guide](docs/CI_CD_GUIDE.md)
 
 ## 📊 API Endpoints
 
@@ -206,10 +207,10 @@ For detailed pipeline documentation, see: [CI/CD Guide](docs/CI_CD_GUIDE.md)
 
 ### User Management
 
-- `POST /user/register` - Register user
-- `POST /user/login` - Login
-- `POST /user/verify-registration` - Verify account
-- `GET /user/me` - Get user profile
+- `POST /api/v1/user/register` - Register user
+- `POST /api/v1/user/login` - Login
+- `POST /api/v1/user/verify-registration` - Verify account
+- `GET /api/v1/user/me` - Get user profile
 
 ## 🔧 Testing
 
@@ -285,63 +286,22 @@ python test/run_tests.py --type api
 - Backup encryption
 - Network security
 
-## 🚀 Deployment Architecture
-
-### Production Stack
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Nginx Proxy   │    │   Load Balancer │    │   CDN/Edge      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │  Pollinexus API │
-                    └─────────────────┘
-                                 │
-         ┌───────────────────────┼───────────────────────┐
-         │                       │                       │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   PostgreSQL    │    │     Redis       │    │   Elasticsearch │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │  Celery Workers │
-                    └─────────────────┘
-```
-
-### Scalability Features
-
-- Horizontal scaling with load balancers
-- Database connection pooling
-- Redis clustering for high availability
-- Celery worker auto-scaling
-- Container orchestration with Kubernetes
-
 ## 📚 Documentation
 
-### API Documentation
+### Core Docs
 
-- Interactive docs: `/docs` (Swagger UI)
-- ReDoc documentation: `/redoc`
-- OpenAPI schema: `/openapi.json`
+- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)**
+- **[docs/CODE_OF_CONDUCT.md](docs/CODE_OF_CONDUCT.md)**
+- **[docs/CHANGELOG.md](docs/CHANGELOG.md)**
 
-### User Guides
+### API Documentation (by Tag Group)
 
-- [Getting Started Guide](docs/GETTING_STARTED.md)
-- [API Reference](docs/API.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-
-### Developer Resources
-
-- [Development Setup](docs/DEVELOPMENT.md)
-- [Contributing Guidelines](docs/CONTRIBUTING.md)
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Testing Guide](docs/TESTING.md)
+- **[docs/api-health-info.md](docs/api-health-info.md)**
+- **[docs/api-auth.md](docs/api-auth.md)**
+- **[docs/api-datasets.md](docs/api-datasets.md)**
+- **[docs/api-analysis.md](docs/api-analysis.md)**
+- **[docs/api-visualizations.md](docs/api-visualizations.md)**
+- **[docs/api-monitoring.md](docs/api-monitoring.md)**
 
 ## 🤝 Contributing
 

@@ -5,7 +5,7 @@ This module contains all endpoints related to data visualization operations
 with comprehensive logging and monitoring.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import time
@@ -22,15 +22,14 @@ from ...tasks.visualization import (
 )
 from ...core.logging import logger, request_id, correlation_id
 from ...core.metrics import monitor_performance
-from ...core.error_tracking import track_errors, error_tracker
+from ...core.error_tracking import track_errors
 from ..models.requests import VisualizationRequest
 from ..models.responses import (
     VisualizationResponse,
-    SuccessResponse,
-    ErrorResponse
+    SuccessResponse
 )
 
-router = APIRouter(tags=["3 - Visualizations"])
+router = APIRouter()
 
 
 @router.post("/visualizations/bee-distribution/", response_model=VisualizationResponse, tags=["📈 Data Visualizations"])

@@ -667,7 +667,7 @@ async def api_info():
             },
             "users": {
                 "count": 8,
-                "base_path": "/user",
+                "base_path": "/api/v1/user",
                 "operations": ["register", "login", "verify", "profile", "management"]
             }
         },
@@ -760,7 +760,7 @@ async def get_metrics():
 # USER API ENDPOINTS
 ############################################################
 
-@app.post("/user/send-verification", response_model=VerificationResponse, tags=["0 - System"])
+@app.post("/api/v1/user/send-verification", response_model=VerificationResponse, tags=["🔧 Setup, Data Loading, and System Monitoring"])
 async def send_verification(verification_request: VerificationRequest):
     """Send verification code to user via email or WhatsApp."""
     
@@ -815,7 +815,7 @@ async def send_verification(verification_request: VerificationRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/user/register", response_model=UserResponseWithId, tags=["0 - System"])
+@app.post("/api/v1/user/register", response_model=UserResponseWithId, tags=["🔧 Setup, Data Loading, and System Monitoring"])
 async def register_user(user_data: UserRegistration):
     """Register a new user with email OTP verification."""
     
@@ -848,7 +848,7 @@ async def register_user(user_data: UserRegistration):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/user/login", tags=["0 - System"])
+@app.post("/api/v1/user/login", tags=["🔧 Setup, Data Loading, and System Monitoring"])
 async def login(login_data: UserLoginRequest):
     """Request OTP for email login."""
     
@@ -880,19 +880,19 @@ async def login(login_data: UserLoginRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/user/verify-registration", response_model=TokenResponse, tags=["0 - System"])
+@app.post("/api/v1/user/verify-registration", response_model=TokenResponse, tags=["🔧 Setup, Data Loading, and System Monitoring"])
 async def verify_registration(request: VerifyOTPRequest):
     """Verify registration OTP and activate account."""
     return await verify_otp_and_generate_token(request, mark_verified=True)
 
 
-@app.post("/user/verify-login", response_model=TokenResponse, tags=["0 - System"])
+@app.post("/api/v1/user/verify-login", response_model=TokenResponse, tags=["🔧 Setup, Data Loading, and System Monitoring"])
 async def verify_login(request: VerifyOTPRequest):
     """Verify login OTP and generate access token."""
     return await verify_otp_and_generate_token(request, mark_verified=False)
 
 
-@app.get("/api/v1/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["0 - System"])
+@app.get("/api/v1/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["🔧 Setup, Data Loading, and System Monitoring"])
 async def get_me(current_user: dict = Depends(get_current_user)):
     """Get current authenticated user's information."""
     try:
