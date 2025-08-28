@@ -65,6 +65,47 @@ class StructuredJSONFormatter(logging.Formatter):
         return json.dumps(log_entry, default=str)
 
 
+class CustomLogger(logging.Logger):
+    """Logger that safely accepts arbitrary keyword args and merges them into extra."""
+
+    def _merge_extra(self, extra: Optional[Dict[str, Any]], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        merged: Dict[str, Any] = {}
+        if extra:
+            merged.update(extra)
+        if kwargs:
+            merged.update(kwargs)
+        # Drop None-valued fields to keep logs clean
+        return {k: v for k, v in merged.items() if v is not None}
+
+    def debug(self, msg, *args, extra=None, **kwargs):
+        return super().debug(msg, *args, extra=self._merge_extra(extra, kwargs))
+
+    def info(self, msg, *args, extra=None, **kwargs):
+        return super().info(msg, *args, extra=self._merge_extra(extra, kwargs))
+
+    def warning(self, msg, *args, extra=None, **kwargs):
+        return super().warning(msg, *args, extra=self._merge_extra(extra, kwargs))
+
+    def error(self, msg, *args, extra=None, **kwargs):
+        return super().error(msg, *args, extra=self._merge_extra(extra, kwargs))
+
+    def critical(self, msg, *args, extra=None, **kwargs):
+        return super().critical(msg, *args, extra=self._merge_extra(extra, kwargs))
+
+    def exception(self, msg, *args, extra=None, **kwargs):
+        # Keep stack info via exc_info=True if not provided
+        if 'exc_info' not in kwargs:
+            kwargs['exc_info'] = True
+        return super().error(msg, *args, extra=self._merge_extra(extra, kwargs), exc_info=kwargs.get('exc_info'))
+
+    def log(self, level, msg, *args, extra=None, **kwargs):
+        return super().log(level, msg, *args, extra=self._merge_extra(extra, kwargs))
+
+
+# Ensure our custom logger is used globally before any loggers are created
+logging.setLoggerClass(CustomLogger)
+
+
 def setup_logging(
     level: str = "INFO",
     format_type: str = "json",

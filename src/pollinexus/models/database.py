@@ -9,6 +9,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import duckdb
+from sqlalchemy import Identity
 
 Base = declarative_base()
 
@@ -18,7 +19,7 @@ class Dataset(Base):
     
     __tablename__ = "datasets"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(always=True), primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text)
     file_path = Column(String(500), nullable=False)
@@ -39,7 +40,7 @@ class AnalysisJob(Base):
     
     __tablename__ = "analysis_jobs"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(always=True), primary_key=True, index=True)
     dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False, index=True)
     job_type = Column(String(100), nullable=False, index=True)  # e.g., 'bee_preferences', 'plant_recommendations'
     status = Column(String(50), default="pending", index=True)  # pending, running, completed, failed
@@ -64,7 +65,7 @@ class PlantRecommendation(Base):
     
     __tablename__ = "plant_recommendations"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(always=True), primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("analysis_jobs.id"), nullable=False, index=True)
     plant_species = Column(String(255), nullable=False, index=True)
     score = Column(Numeric(10, 3))  # Recommendation score
@@ -87,7 +88,7 @@ class AnalysisResult(Base):
     
     __tablename__ = "analysis_results"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(always=True), primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("analysis_jobs.id"), nullable=False, index=True)
     result_type = Column(String(100), nullable=False)  # e.g., 'model_accuracy', 'feature_importance'
     result_data = Column(JSON)  # Result data as JSON

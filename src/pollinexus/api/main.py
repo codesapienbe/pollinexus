@@ -28,6 +28,7 @@ from .models.user_models import (
     UserRegistration, UserLoginRequest, VerifyOTPRequest, VerificationRequest,
     UserResponseWithId, TokenResponse, VerificationResponse, UserResponseWithFaces
 )
+from ..core.database import create_tables
 
 
 @asynccontextmanager
@@ -47,6 +48,28 @@ async def lifespan(app: FastAPI):
     
     # Initialize error tracker
     error_tracker.initialize()
+
+    # Ensure database tables exist (idempotent)
+    try:
+        create_tables()
+        logger.info(
+            "Database tables ensured",
+            extra={
+                "operation": "app_startup",
+                "component": "database",
+                "action": "create_tables"
+            }
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to ensure database tables",
+            extra={
+                "operation": "app_startup",
+                "component": "database",
+                "action": "create_tables",
+                "error": str(e)
+            }
+        )
     
     yield
     

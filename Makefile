@@ -38,12 +38,20 @@ VAGRANT := vagrant
 VAGRANT_BOX := ubuntu/focal64
 VAGRANT_VM_NAME := pollinexus-dev
 
-# Colors for output
+# Colors for output (disable if not a TTY)
+ifeq ($(shell test -t 1 && echo tty || echo notty),tty)
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 RED := \033[0;31m
 BLUE := \033[0;34m
 NC := \033[0m # No Color
+else
+GREEN :=
+YELLOW :=
+RED :=
+BLUE :=
+NC :=
+endif
 
 .PHONY: help build train run dev prod clean install test lint format local docker remote
 
@@ -158,7 +166,12 @@ run-local:
 		--host $(DEV_HOST) \
 		--port $(DEV_PORT) \
 		$(if $(filter true,$(DEV_RELOAD)),--reload) \
-		--workers $(DEV_WORKERS)
+		--workers $(DEV_WORKERS) & \
+		echo "$(GREEN)Starting Jupyter Lab for notebooks...$(NC)"; \
+		$(UV) run jupyter lab --no-browser --NotebookApp.token='' --NotebookApp.password='' --ip=$(DEV_HOST) --port=8888 --notebook-dir=src/pollinexus/notebook
+	@echo "$(GREEN)Application running at http://$(DEV_HOST):$(DEV_PORT)$(NC)"
+	@echo "$(GREEN)Jupyter Lab running at http://$(DEV_HOST):8888$(NC)"
+	
 
 dev-local:
 	@echo "$(GREEN)Starting development server locally...$(NC)"
