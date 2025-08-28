@@ -18,7 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .logging import logger
+from .logging import logger, get_monitoring_metrics, log_monitor
 from .database import SessionLocal
 
 
@@ -96,6 +96,13 @@ class HealthMonitor:
             self._check_disk_space,
             timeout=5.0,
             critical=True
+        )
+        
+        self.register_check(
+            "logging_system",
+            self._check_logging_system,
+            timeout=5.0,
+            critical=False
         )
         
         self.register_check(
@@ -584,6 +591,70 @@ class HealthMonitor:
             return {
                 "status": HealthStatus.CRITICAL.value,
                 "message": "Failed to check application status",
+                "details": {"error": str(e)}
+            }
+    
+    async def _check_logging_system(self) -> Dict[str, Any]:
+        """Check logging system health and metrics."""
+        try:
+            # Get monitoring metrics
+            metrics = get_monitoring_metrics()
+            
+            # Calculate error rate
+            total_errors = sum(metrics['error_counts'].values())
+            total_warnings = sum(metrics['warning_counts'].values())
+            
+            # Check for critical issues
+            critical_errors = metrics['error_counts'].get('critical', 0)
+            high_error_rate = any(
+                count > 10 for count in metrics['error_counts'].values()
+            )
+            
+            # Check performance issues
+            slow_operations = [
+                op for op, data in metrics['performance_metrics'].items()
+                if data.get('avg_time', 0) > 5.0
+            ]
+            
+            # Determine status
+            if critical_errors > 0:
+                status = HealthStatus.CRITICAL
+                message = f"Critical errors detected: {critical_errors}"
+            elif high_error_rate:
+                status = HealthStatus.WARNING
+                message = "High error rate detected"
+            elif slow_operations:
+                status = HealthStatus.WARNING
+                message = f"Slow operations detected: {len(slow_operations)}"
+            else:
+                status = HealthStatus.HEALTHY
+                message = "Logging system healthy"
+            
+            return {
+                "status": status,
+                "message": message,
+                "details": {
+                    "total_errors": total_errors,
+                    "total_warnings": total_warnings,
+                    "critical_errors": critical_errors,
+                    "slow_operations": slow_operations,
+                    "error_counts": metrics['error_counts'],
+                    "performance_metrics": {
+                        op: {
+                            'count': data.get('count', 0),
+                            'avg_time': data.get('avg_time', 0),
+                            'max_time': data.get('max_time', 0)
+                        }
+                        for op, data in metrics['performance_metrics'].items()
+                    }
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Logging system health check failed: {e}")
+            return {
+                "status": HealthStatus.CRITICAL,
+                "message": f"Logging system health check failed: {str(e)}",
                 "details": {"error": str(e)}
             }
     

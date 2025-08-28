@@ -19,6 +19,7 @@ from ...services.data_service import DataService
 from ...core.logging import logger, request_id, correlation_id
 from ...core.metrics import monitor_performance
 from ...core.error_tracking import track_errors, error_tracker
+from ...core.security import calculate_upload_checksum
 from ..models.requests import DatasetCreate, DatasetUpdate, SearchRequest, FilterRequest
 from ..models.responses import DatasetResponse, DatasetListResponse, SuccessResponse, ErrorResponse
 
@@ -32,7 +33,7 @@ async def create_dataset(
     file: UploadFile = File(..., description="Dataset file (CSV, Excel, Parquet)"),
     db: Session = Depends(get_db)
 ):
-    """Upload and create a new dataset with comprehensive logging."""
+    """Upload and create a new dataset with comprehensive logging and duplicate detection."""
     
     req_id = request_id.get()
     corr_id = correlation_id.get()
@@ -71,6 +72,61 @@ async def create_dataset(
             raise HTTPException(
                 status_code=400, 
                 detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"
+            )
+        
+        # Calculate file checksum for duplicate detection
+        logger.info(
+            "Calculating file checksum",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "file_name": provided_filename,
+                "operation": "api_dataset_upload"
+            }
+        )
+        
+        try:
+            file_checksum = calculate_upload_checksum(file)
+            logger.info(
+                "File checksum calculated successfully",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "file_checksum": file_checksum,
+                    "operation": "api_dataset_upload"
+                }
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to calculate file checksum",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "file_name": provided_filename,
+                    "error": str(e),
+                    "operation": "api_dataset_upload"
+                }
+            )
+            raise HTTPException(status_code=400, detail=f"Failed to process file: {str(e)}")
+        
+        # Check for duplicate file by checksum
+        db_service = DatabaseService(db)
+        existing_dataset = db_service.get_dataset_by_checksum(file_checksum)
+        if existing_dataset:
+            logger.warning(
+                "Duplicate file upload attempted",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "file_checksum": file_checksum,
+                    "existing_dataset_id": existing_dataset.id,
+                    "existing_dataset_name": existing_dataset.name,
+                    "operation": "api_dataset_upload"
+                }
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=f"File already exists as dataset '{existing_dataset.name}' (ID: {existing_dataset.id})"
             )
         
         # Create upload directory
@@ -136,15 +192,22 @@ async def create_dataset(
             )
             raise HTTPException(status_code=400, detail=f"Error loading dataset: {str(e)}")
         
-        # Create dataset record (derive name from filename; no description for MVP)
-        db_service = DatabaseService(db)
+        # Create dataset record with checksum
         dataset_name = PathLib(provided_filename).stem or f"dataset_{timestamp}"
         dataset_create = DatasetCreate(
             name=dataset_name,
             description=None,
-            file_path=str(file_path)
+            file_path=str(file_path),
+            file_checksum=file_checksum
         )
-        dataset = db_service.create_dataset(dataset_create)
+        
+        try:
+            dataset = db_service.create_dataset(dataset_create)
+        except ValueError as e:
+            # Handle duplicate detection error from database service
+            if file_path.exists():
+                os.remove(file_path)
+            raise HTTPException(status_code=409, detail=str(e))
         
         operation_time = time.time() - start_time
         
@@ -155,6 +218,7 @@ async def create_dataset(
                 "correlation_id": corr_id,
                 "dataset_id": dataset.id,
                 "dataset_name": dataset_name,
+                "file_checksum": file_checksum,
                 "operation_time": operation_time,
                 "operation": "api_dataset_upload"
             }

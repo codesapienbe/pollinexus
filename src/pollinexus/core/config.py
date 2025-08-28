@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     environment: str = "development"  # development, staging, production
     
     # Database settings
-    database_url: str = "duckdb:///pollinexus.db"
+    database_url: str = "sqlite:///pollinexus.db"
     database_pool_size: int = 5
     database_max_overflow: int = 10
     database_pool_timeout: int = 30

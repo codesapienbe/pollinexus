@@ -34,12 +34,24 @@ class DatasetCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Dataset name")
     description: Optional[str] = Field(None, max_length=1000, description="Dataset description")
     file_path: str = Field(..., description="Path to the dataset file")
+    file_checksum: str = Field(..., min_length=64, max_length=64, description="SHA-256 checksum of the file")
     
     @validator('name')
     def validate_name(cls, v):
         if not v.strip():
             raise ValueError('Name cannot be empty')
         return v.strip()
+    
+    @validator('file_checksum')
+    def validate_checksum(cls, v):
+        if not v or len(v) != 64:
+            raise ValueError('File checksum must be a 64-character SHA-256 hash')
+        # Validate hex format
+        try:
+            int(v, 16)
+        except ValueError:
+            raise ValueError('File checksum must be a valid hexadecimal string')
+        return v.lower()
 
 
 class DatasetUpdate(BaseModel):

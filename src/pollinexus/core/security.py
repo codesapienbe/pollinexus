@@ -10,12 +10,13 @@ import ipaddress
 import hashlib
 import re
 from os.path import splitext
-from typing import Dict, Optional, Set, List, Any
+from typing import Dict, Optional, Set, List, Any, Tuple
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import secrets
 import threading
+from pathlib import Path
 
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -440,6 +441,43 @@ security_monitor = SecurityMonitor()
 def create_security_middleware(app):
     """Create and configure security middleware."""
     return SecurityMiddleware(app, rate_limiter)
+
+
+def calculate_file_checksum(file_path: str) -> str:
+    """Calculate SHA-256 checksum of a file."""
+    sha256_hash = hashlib.sha256()
+    
+    try:
+        with open(file_path, "rb") as f:
+            # Read file in chunks to handle large files efficiently
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(chunk)
+        
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger.error(f"Failed to calculate checksum for {file_path}: {e}")
+        raise ValueError(f"Failed to calculate file checksum: {str(e)}")
+
+
+def calculate_upload_checksum(upload_file) -> str:
+    """Calculate SHA-256 checksum of an uploaded file."""
+    sha256_hash = hashlib.sha256()
+    
+    try:
+        # Reset file pointer to beginning
+        upload_file.file.seek(0)
+        
+        # Read file in chunks to handle large files efficiently
+        for chunk in iter(lambda: upload_file.file.read(4096), b""):
+            sha256_hash.update(chunk)
+        
+        # Reset file pointer for later use
+        upload_file.file.seek(0)
+        
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger.error(f"Failed to calculate checksum for uploaded file: {e}")
+        raise ValueError(f"Failed to calculate upload checksum: {str(e)}")
 
 
 # Export main components

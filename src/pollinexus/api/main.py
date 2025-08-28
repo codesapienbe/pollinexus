@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
     try:
         create_tables()
         logger.info(
-            "Database tables ensured",
+            "Database tables created successfully",
             extra={
                 "operation": "app_startup",
                 "component": "database",
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
         )
     except Exception as e:
         logger.error(
-            "Failed to ensure database tables",
+            "Failed to create database tables - application cannot start",
             extra={
                 "operation": "app_startup",
                 "component": "database",
@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI):
                 "error": str(e)
             }
         )
+        # Fail fast - don't start the app without database tables
+        raise RuntimeError(f"Database initialization failed: {e}")
     
     yield
     

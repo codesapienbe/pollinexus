@@ -2,87 +2,70 @@
 """
 Command-line interface for Pollinexus.
 
-This module provides CLI commands for database management,
-model training, and other administrative tasks.
+This module provides CLI commands for database management, model training,
+and other administrative tasks.
 """
 
 import click
 import sys
 from pathlib import Path
 
-# Add the src directory to the Python path
+# Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pollinexus.core.database import create_tables, check_database_connection
-from pollinexus.core.logging import logger
-from pollinexus.models.database import Base
-from pollinexus.models.user import User, UserOTP, UserSession
+from pollinexus.core.config import settings
 
 
 @click.group()
 def cli():
-    """Pollinexus CLI - Data-Driven Pollinator Conservation"""
+    """Pollinexus CLI - Data-Driven Pollinator Conservation API"""
     pass
 
 
 @cli.command()
 def init_db():
-    """Initialize the database with all tables."""
+    """Initialize the database and create all tables."""
+    click.echo("🔧 Initializing Pollinexus database...")
+    
     try:
-        click.echo("Initializing database...")
-        
-        # Check database connection
+        # Test connection
         if not check_database_connection():
-            click.echo("❌ Database connection failed", err=True)
+            click.echo("❌ Database connection failed!")
             sys.exit(1)
         
-        # Create all tables
+        # Create tables
         create_tables()
-        
-        click.echo("✅ Database initialized successfully")
-        click.echo("Tables created:")
-        click.echo("  - datasets")
-        click.echo("  - analysis_jobs")
-        click.echo("  - plant_recommendations")
-        click.echo("  - analysis_results")
-        click.echo("  - users")
-        click.echo("  - user_otps")
-        click.echo("  - user_sessions")
+        click.echo("✅ Database initialized successfully!")
         
     except Exception as e:
-        click.echo(f"❌ Database initialization failed: {e}", err=True)
-        logger.error(f"Database initialization failed: {e}")
+        click.echo(f"❌ Database initialization failed: {e}")
         sys.exit(1)
 
 
 @cli.command()
 def check_db():
-    """Check database connection and status."""
+    """Check database connection and table status."""
+    click.echo("🔍 Checking database status...")
+    
     try:
-        click.echo("Checking database connection...")
-        
         if check_database_connection():
-            click.echo("✅ Database connection successful")
+            click.echo("✅ Database connection successful!")
         else:
-            click.echo("❌ Database connection failed", err=True)
+            click.echo("❌ Database connection failed!")
             sys.exit(1)
             
     except Exception as e:
-        click.echo(f"❌ Database check failed: {e}", err=True)
+        click.echo(f"❌ Database check failed: {e}")
         sys.exit(1)
 
 
 @cli.command()
 def train_models():
-    """Train machine learning models."""
-    try:
-        click.echo("Training machine learning models...")
-        # TODO: Implement model training
-        click.echo("✅ Model training completed")
-        
-    except Exception as e:
-        click.echo(f"❌ Model training failed: {e}", err=True)
-        sys.exit(1)
+    """Train machine learning models for pollinator analysis."""
+    click.echo("🤖 Training ML models...")
+    # TODO: Implement model training
+    click.echo("✅ Model training completed!")
 
 
 if __name__ == "__main__":

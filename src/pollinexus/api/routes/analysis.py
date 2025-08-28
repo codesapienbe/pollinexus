@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTa
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import time
+from datetime import datetime
 
 from ...core.database import get_db
 from ...services.database_service import DatabaseService
@@ -19,7 +20,7 @@ from ...tasks.analysis import (
     seasonal_analysis,
     site_comparison
 )
-from ...core.logging import logger, request_id, correlation_id
+from ...core.logging import logger, request_id, correlation_id, get_monitoring_metrics, reset_monitoring_metrics
 from ...core.metrics import monitor_performance
 from ...core.error_tracking import track_errors, error_tracker
 from ..models.requests import (
@@ -38,6 +39,117 @@ from ..models.responses import (
 )
 
 router = APIRouter()
+
+
+@router.get("/monitoring/metrics/", response_model=Dict[str, Any])
+@monitor_performance("api_monitoring_metrics")
+async def get_logging_metrics():
+    """Get comprehensive logging and monitoring metrics."""
+    
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+    
+    logger.info(
+        "Monitoring metrics request received",
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "api_monitoring_metrics"
+        }
+    )
+    
+    try:
+        metrics = get_monitoring_metrics()
+        
+        # Add additional system metrics
+        import psutil
+        system_metrics = {
+            "cpu_percent": psutil.cpu_percent(interval=1),
+            "memory_percent": psutil.virtual_memory().percent,
+            "disk_usage_percent": psutil.disk_usage('/').percent,
+            "active_connections": len(psutil.net_connections()),
+            "process_count": len(psutil.pids())
+        }
+        
+        response_data = {
+            "timestamp": time.time(),
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "logging_metrics": metrics,
+            "system_metrics": system_metrics
+        }
+        
+        logger.info(
+            "Monitoring metrics retrieved successfully",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "metrics_count": len(metrics),
+                "operation": "api_monitoring_metrics"
+            }
+        )
+        
+        return response_data
+        
+    except Exception as e:
+        logger.error(
+            "Failed to retrieve monitoring metrics",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "api_monitoring_metrics"
+            }
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {str(e)}")
+
+
+@router.post("/monitoring/metrics/reset/", response_model=SuccessResponse)
+@monitor_performance("api_monitoring_reset")
+async def reset_metrics():
+    """Reset monitoring metrics (useful for testing or periodic resets)."""
+    
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+    
+    logger.info(
+        "Monitoring metrics reset request received",
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "operation": "api_monitoring_reset"
+        }
+    )
+    
+    try:
+        reset_monitoring_metrics()
+        
+        logger.info(
+            "Monitoring metrics reset successfully",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "operation": "api_monitoring_reset"
+            }
+        )
+        
+        return SuccessResponse(
+            message="Monitoring metrics reset successfully",
+            data={"request_id": req_id, "correlation_id": corr_id},
+            timestamp=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        logger.error(
+            "Failed to reset monitoring metrics",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "api_monitoring_reset"
+            }
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to reset metrics: {str(e)}")
 
 
 @router.post("/analysis/bee-preferences/", response_model=AnalysisJobResponse)

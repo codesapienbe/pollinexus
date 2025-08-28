@@ -33,18 +33,36 @@ class DatabaseService:
         
         logger.info(
             "Creating new dataset",
-            dataset_name=dataset.name,
-            file_path=dataset.file_path,
-            operation="dataset_create"
+            extra={
+                "dataset_name": dataset.name,
+                "file_path": dataset.file_path,
+                "file_checksum": dataset.file_checksum,
+                "operation": "dataset_create"
+            }
         )
         
         start_time = time.time()
         
         try:
+            # Check for duplicate file by checksum
+            existing_dataset = self.get_dataset_by_checksum(dataset.file_checksum)
+            if existing_dataset:
+                logger.warning(
+                    "Duplicate file detected by checksum",
+                    extra={
+                        "file_checksum": dataset.file_checksum,
+                        "existing_dataset_id": existing_dataset.id,
+                        "existing_dataset_name": existing_dataset.name,
+                        "operation": "dataset_create"
+                    }
+                )
+                raise ValueError(f"File already exists as dataset '{existing_dataset.name}' (ID: {existing_dataset.id})")
+            
             db_dataset = Dataset(
                 name=dataset.name,
                 description=dataset.description,
-                file_path=dataset.file_path
+                file_path=dataset.file_path,
+                file_checksum=dataset.file_checksum
             )
             
             self.db.add(db_dataset)
@@ -55,10 +73,13 @@ class DatabaseService:
             
             logger.info(
                 "Dataset created successfully",
-                dataset_id=db_dataset.id,
-                dataset_name=dataset.name,
-                operation_time=operation_time,
-                operation="dataset_create"
+                extra={
+                    "dataset_id": db_dataset.id,
+                    "dataset_name": dataset.name,
+                    "file_checksum": dataset.file_checksum,
+                    "operation_time": operation_time,
+                    "operation": "dataset_create"
+                }
             )
             
             return db_dataset
@@ -66,9 +87,12 @@ class DatabaseService:
         except Exception as e:
             logger.error(
                 "Dataset creation failed",
-                dataset_name=dataset.name,
-                error=str(e),
-                operation="dataset_create"
+                extra={
+                    "dataset_name": dataset.name,
+                    "file_checksum": dataset.file_checksum,
+                    "error": str(e),
+                    "operation": "dataset_create"
+                }
             )
             self.db.rollback()
             raise
@@ -629,3 +653,51 @@ class DatabaseService:
                 operation="database_cleanup"
             )
             self.db.rollback() 
+
+    @monitor_performance("dataset_get_by_checksum")
+    @track_errors("database_operation")
+    def get_dataset_by_checksum(self, file_checksum: str) -> Optional[Dataset]:
+        """Get dataset by file checksum for duplicate detection."""
+        
+        logger.debug(
+            "Checking for duplicate file by checksum",
+            extra={
+                "file_checksum": file_checksum,
+                "operation": "dataset_get_by_checksum"
+            }
+        )
+        
+        try:
+            dataset = self.db.query(Dataset).filter(Dataset.file_checksum == file_checksum).first()
+            
+            if dataset:
+                logger.info(
+                    "Duplicate file found by checksum",
+                    extra={
+                        "file_checksum": file_checksum,
+                        "existing_dataset_id": dataset.id,
+                        "existing_dataset_name": dataset.name,
+                        "operation": "dataset_get_by_checksum"
+                    }
+                )
+            else:
+                logger.debug(
+                    "No duplicate file found by checksum",
+                    extra={
+                        "file_checksum": file_checksum,
+                        "operation": "dataset_get_by_checksum"
+                    }
+                )
+            
+            return dataset
+            
+        except Exception as e:
+            logger.error(
+                "Error checking for duplicate file by checksum",
+                extra={
+                    "file_checksum": file_checksum,
+                    "error": str(e),
+                    "operation": "dataset_get_by_checksum"
+                }
+            )
+            raise 

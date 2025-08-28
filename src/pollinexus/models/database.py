@@ -1,14 +1,13 @@
 """
 Database models for Pollinexus.
 
-This module contains SQLAlchemy models for the application database.
+This module contains SQLAlchemy models optimized for SQLite with enterprise-grade features.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, Numeric
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, Numeric, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
-import duckdb
 from sqlalchemy import Identity
 
 Base = declarative_base()
@@ -22,14 +21,22 @@ class Dataset(Base):
     id = Column(Integer, Identity(always=True), primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text)
-    file_path = Column(String(500), nullable=False)
+    file_path = Column(String(500), nullable=False, index=True)
     file_size = Column(Integer)  # File size in bytes
+    file_checksum = Column(String(64), nullable=False, index=True)  # SHA-256 checksum for duplicate detection
     record_count = Column(Integer)  # Number of records in dataset
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
     
     # Relationships
     analysis_jobs = relationship("AnalysisJob", back_populates="dataset", cascade="all, delete-orphan")
+    
+    # SQLite-specific indexes for performance
+    __table_args__ = (
+        Index('idx_datasets_name_created', 'name', 'created_at'),
+        Index('idx_datasets_file_path', 'file_path'),
+        Index('idx_datasets_checksum', 'file_checksum'),  # Index for duplicate detection
+    )
     
     def __repr__(self):
         return f"<Dataset(id={self.id}, name='{self.name}')>"
@@ -48,13 +55,20 @@ class AnalysisJob(Base):
     results = Column(JSON)  # Job results as JSON
     error_message = Column(Text)  # Error message if job failed
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    started_at = Column(DateTime)  # When job started processing
+    started_at = Column(DateTime, index=True)  # When job started processing
     completed_at = Column(DateTime, index=True)  # When job completed
     celery_task_id = Column(String(255), index=True)  # Celery task ID
     
     # Relationships
     dataset = relationship("Dataset", back_populates="analysis_jobs")
     recommendations = relationship("PlantRecommendation", back_populates="job", cascade="all, delete-orphan")
+    
+    # SQLite-specific indexes for performance
+    __table_args__ = (
+        Index('idx_analysis_jobs_dataset_status', 'dataset_id', 'status'),
+        Index('idx_analysis_jobs_type_status', 'job_type', 'status'),
+        Index('idx_analysis_jobs_created_status', 'created_at', 'status'),
+    )
     
     def __repr__(self):
         return f"<AnalysisJob(id={self.id}, type='{self.job_type}', status='{self.status}')>"

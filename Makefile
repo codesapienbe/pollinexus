@@ -53,7 +53,7 @@ BLUE :=
 NC :=
 endif
 
-.PHONY: help build train run dev prod clean install test lint format local docker remote
+.PHONY: help build train run clean install test lint format local docker remote
 
 # Default target
 help:
@@ -116,22 +116,6 @@ run:
 run-%:
 	@echo "$(BLUE)Running for environment: $*$(NC)"
 	@$(MAKE) run-$*
-
-dev:
-	@echo "$(BLUE)Starting development for environment: $(ENV)$(NC)"
-	@$(MAKE) dev-$(ENV)
-
-dev-%:
-	@echo "$(BLUE)Starting development for environment: $*$(NC)"
-	@$(MAKE) dev-$*
-
-prod:
-	@echo "$(BLUE)Starting production for environment: $(ENV)$(NC)"
-	@$(MAKE) prod-$(ENV)
-
-prod-%:
-	@echo "$(BLUE)Starting production for environment: $*$(NC)"
-	@$(MAKE) prod-$*
 
 # Local development targets (using uv)
 build-local:
