@@ -11,6 +11,109 @@ VENV := .venv
 PYTHON_VENV := $(VENV)/bin/python
 UV := uv
 
+# PDF generation settings
+PANDOC := pandoc
+PDFS_DIR := pdfs
+DOCS_DIR := docs
+ROOT_MARKDOWN_FILES := README.md
+
+# PDF generation functions
+define install-pandoc
+	@echo "$(YELLOW)Pandoc not found. Attempting installation...$(NC)"
+	@OS_NAME="$$(uname -s)"; \
+	case "$$OS_NAME" in \
+		Linux*) \
+			if command -v apt-get >/dev/null 2>&1; then \
+				sudo apt-get update && sudo apt-get install -y pandoc; \
+			else \
+				echo "$(RED)apt-get not found. Please install Pandoc manually.$(NC)"; \
+				echo "$(YELLOW)Visit: https://pandoc.org/installing.html$(NC)"; \
+				exit 0; \
+			fi ;; \
+		Darwin*) \
+			if command -v brew >/dev/null 2>&1; then \
+				brew update && brew install pandoc; \
+			else \
+				echo "$(RED)Homebrew not found. Please install Pandoc manually.$(NC)"; \
+				echo "$(YELLOW)Visit: https://pandoc.org/installing.html$(NC)"; \
+				exit 0; \
+			fi ;; \
+		MINGW*|MSYS*|CYGWIN*) \
+			if command -v winget >/dev/null 2>&1; then \
+				winget install -e --id JohnMacFarlane.Pandoc --accept-package-agreements --accept-source-agreements; \
+			else \
+				echo "$(RED)winget not found. Please install Pandoc manually.$(NC)"; \
+				echo "$(YELLOW)Visit: https://pandoc.org/installing.html$(NC)"; \
+				exit 0; \
+			fi ;; \
+		*) \
+			echo "$(RED)Unsupported OS for automatic Pandoc installation.$(NC)"; \
+			echo "$(YELLOW)Visit: https://pandoc.org/installing.html$(NC)"; \
+			exit 0 ;; \
+	esac
+endef
+
+define install-pdf-engine
+	@echo "$(YELLOW)No PDF engine found. Attempting to install MiKTeX for Windows...$(NC)"
+	@OS_NAME="$$(uname -s)"; \
+	if [ "$$OS_NAME" = "MINGW64_NT"* ] || [ "$$OS_NAME" = "MSYS_NT"* ] || [ "$$OS_NAME" = "CYGWIN_NT"* ]; then \
+		if command -v winget >/dev/null 2>&1; then \
+			echo "$(BLUE)Installing MiKTeX via winget...$(NC)"; \
+			winget install -e --id MiKTeX.MiKTeX --accept-package-agreements --accept-source-agreements; \
+			echo "$(GREEN)MiKTeX installation complete. Please restart your terminal and run make build again.$(NC)"; \
+			exit 0; \
+		else \
+			echo "$(RED)winget not found. Please install MiKTeX manually.$(NC)"; \
+			echo "$(YELLOW)Visit: https://miktex.org/download$(NC)"; \
+			exit 0; \
+		fi; \
+	else \
+		echo "$(YELLOW)Install with: $(shell if command -v brew >/dev/null 2>&1; then echo "brew install basictex"; elif command -v apt-get >/dev/null 2>&1; then echo "sudo apt-get install texlive-xetex"; elif command -v winget >/dev/null 2>&1; then echo "winget install -e --id MiKTeX.MiKTeX"; else echo "Visit https://www.tug.org/texlive/"; fi)$(NC)"; \
+		exit 0; \
+	fi
+endef
+
+define generate-pdfs
+	@echo "$(GREEN)Generating PDFs from markdown files...$(NC)"
+	@if ! command -v $(PANDOC) >/dev/null 2>&1; then \
+		$(call install-pandoc) \
+	fi
+	@if command -v $(PANDOC) >/dev/null 2>&1; then \
+		mkdir -p $(PDFS_DIR); \
+		PDF_ENGINE=""; \
+		if command -v xelatex >/dev/null 2>&1; then \
+			PDF_ENGINE="--pdf-engine=xelatex"; \
+		elif command -v pdflatex >/dev/null 2>&1; then \
+			PDF_ENGINE="--pdf-engine=pdflatex"; \
+		elif command -v wkhtmltopdf >/dev/null 2>&1; then \
+			PDF_ENGINE="--pdf-engine=wkhtmltopdf"; \
+		else \
+			$(call install-pdf-engine) \
+		fi; \
+		for file in $(ROOT_MARKDOWN_FILES); do \
+			if [ -f "$$file" ]; then \
+				echo "$(BLUE)Converting $$file to PDF...$(NC)"; \
+				$(PANDOC) "$$file" -o "$(PDFS_DIR)/$$(basename "$$file" .md).pdf" $$PDF_ENGINE --toc --number-sections; \
+			fi; \
+		done; \
+		for file in $(DOCS_DIR)/*.md; do \
+			if [ -f "$$file" ]; then \
+				echo "$(BLUE)Converting $$file to PDF...$(NC)"; \
+				$(PANDOC) "$$file" -o "$(PDFS_DIR)/$$(basename "$$file" .md).pdf" $$PDF_ENGINE --toc --number-sections; \
+			fi; \
+		done; \
+		for file in $(DOCS_DIR)/api-groups/*.md; do \
+			if [ -f "$$file" ]; then \
+				echo "$(BLUE)Converting $$file to PDF...$(NC)"; \
+				$(PANDOC) "$$file" -o "$(PDFS_DIR)/api-groups-$$(basename "$$file" .md).pdf" $$PDF_ENGINE --toc --number-sections; \
+			fi; \
+		done; \
+		echo "$(GREEN)PDFs generated in $(PDFS_DIR)/$(NC)"; \
+	else \
+		echo "$(YELLOW)Pandoc installation failed - skipping PDF generation$(NC)"; \
+	fi
+endef
+
 # Docker settings
 DOCKER_COMPOSE := docker-compose
 DOCKER_COMPOSE_PROD := docker-compose -f docker-compose.prod.yml
@@ -63,7 +166,7 @@ help:
 	@echo "  make <target> <environment>"
 	@echo ""
 	@echo "$(GREEN)Targets:$(NC)"
-	@echo "  build       - Build the application"
+	@echo "  build       - Build the application and generate PDFs"
 	@echo "  train       - Train ML models"
 	@echo "  run         - Run the application"
 	@echo "  clean       - Clean build artifacts"
@@ -125,6 +228,7 @@ build-local:
 	fi
 	@echo "$(GREEN)Installing dependencies with uv...$(NC)"
 	@$(UV) sync --dev
+	$(call generate-pdfs)
 	@echo "$(GREEN)Local build complete!$(NC)"
 
 train-local:
@@ -175,6 +279,7 @@ verify-local:
 build-docker:
 	@echo "$(GREEN)Building Docker images...$(NC)"
 	@$(DOCKER_COMPOSE) build --no-cache
+	$(call generate-pdfs)
 	@echo "$(GREEN)Docker build complete!$(NC)"
 
 train-docker:
@@ -200,6 +305,8 @@ build-remote:
 	@$(MAKE) vagrant-up
 	@echo "$(GREEN)Installing dependencies in VM...$(NC)"
 	@$(VAGRANT) ssh -c "cd /vagrant && uv sync --dev"
+	@echo "$(GREEN)Generating PDFs from markdown files...$(NC)"
+	@$(VAGRANT) ssh -c "cd /vagrant && if ! command -v pandoc >/dev/null 2>&1; then echo 'Pandoc not found. Attempting installation...'; sudo apt-get update && sudo apt-get install -y pandoc; fi; if command -v pandoc >/dev/null 2>&1; then mkdir -p pdfs; PDF_ENGINE=''; if command -v xelatex >/dev/null 2>&1; then PDF_ENGINE='--pdf-engine=xelatex'; elif command -v pdflatex >/dev/null 2>&1; then PDF_ENGINE='--pdf-engine=pdflatex'; elif command -v wkhtmltopdf >/dev/null 2>&1; then PDF_ENGINE='--pdf-engine=wkhtmltopdf'; else echo 'No PDF engine found - attempting to install texlive-xetex...'; sudo apt-get update && sudo apt-get install -y texlive-xetex; fi; for file in README.md; do if [ -f \"\$$file\" ]; then echo 'Converting \$$file to PDF...'; pandoc \"\$$file\" -o \"pdfs/\$$(basename \"\$$file\" .md).pdf\" \$$PDF_ENGINE --toc --number-sections; fi; done; for file in docs/*.md; do if [ -f \"\$$file\" ]; then echo 'Converting \$$file to PDF...'; pandoc \"\$$file\" -o \"pdfs/\$$(basename \"\$$file\" .md).pdf\" \$$PDF_ENGINE --toc --number-sections; fi; done; for file in docs/api-groups/*.md; do if [ -f \"\$$file\" ]; then echo 'Converting \$$file to PDF...'; pandoc \"\$$file\" -o \"pdfs/api-groups-\$$(basename \"\$$file\" .md).pdf\" \$$PDF_ENGINE --toc --number-sections; fi; done; echo 'PDFs generated in pdfs/'; else echo 'Pandoc installation failed - skipping PDF generation'; fi"
 	@echo "$(GREEN)Remote build complete!$(NC)"
 
 train-remote:
@@ -417,6 +524,7 @@ env-info:
 	@echo "$(BLUE)Docker Compose: $(shell if command -v docker-compose >/dev/null 2>&1; then echo "Available"; else echo "Not available"; fi)$(NC)"
 	@echo "$(BLUE)Vagrant: $(shell if command -v $(VAGRANT) >/dev/null 2>&1; then echo "Available"; else echo "Not available"; fi)$(NC)"
 	@echo "$(BLUE)VirtualBox: $(shell if command -v VBoxManage >/dev/null 2>&1; then echo "Available"; else echo "Not available"; fi)$(NC)"
+	@echo "$(BLUE)Pandoc: $(shell if command -v $(PANDOC) >/dev/null 2>&1; then echo "Available"; else echo "Not available"; fi)$(NC)"
 
 # Setup targets for first-time users
 setup-local:
@@ -451,12 +559,51 @@ setup-remote:
 		echo "$(RED)VirtualBox is not installed. Please install VirtualBox first.$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(GREEN)Remote environment is ready!$(NC)" 
+	@echo "$(GREEN)Remote environment is ready!$(NC)"
+
+setup-pandoc:
+	@echo "$(GREEN)Setting up Pandoc for PDF generation...$(NC)"
+	@if command -v $(PANDOC) >/dev/null 2>&1; then \
+		echo "$(GREEN)Pandoc is already installed$(NC)"; \
+	else \
+		OS_NAME="$$(uname -s)"; \
+		echo "$(YELLOW)Installing Pandoc for $$OS_NAME...$(NC)"; \
+		case "$$OS_NAME" in \
+			Linux*) \
+				if command -v apt-get >/dev/null 2>&1; then \
+					sudo apt-get update && sudo apt-get install -y pandoc texlive-xetex; \
+				else \
+					echo "$(RED)apt-get not found. Please install Pandoc manually.$(NC)"; \
+					exit 1; \
+				fi ;; \
+			Darwin*) \
+				if command -v brew >/dev/null 2>&1; then \
+					brew update && brew install pandoc basictex; \
+				else \
+					echo "$(RED)Homebrew not found. Please install Homebrew or Pandoc manually.$(NC)"; \
+					exit 1; \
+				fi ;; \
+			MINGW*|MSYS*|CYGWIN*) \
+				if command -v winget >/dev/null 2>&1; then \
+					winget install -e --id JohnMacFarlane.Pandoc --accept-package-agreements --accept-source-agreements; \
+					winget install -e --id MiKTeX.MiKTeX --accept-package-agreements --accept-source-agreements; \
+				else \
+					echo "$(RED)winget not found. Please install Pandoc manually.$(NC)"; \
+					exit 1; \
+				fi ;; \
+			*) \
+				echo "$(RED)Unsupported OS for automatic Pandoc installation.$(NC)"; \
+				exit 1 ;; \
+		esac; \
+	fi
+	@echo "$(GREEN)Pandoc setup complete!$(NC)" 
 
 # Setup local development environment
 setup:
 	@echo "$(BLUE)Setting up local development environment...$(NC)"
-	@python -m pollinexus.cli setup 
+	@python -m pollinexus.cli setup
+
+ 
 
 # KISS Principle Rules - DO NOT ADD NEW ARGUMENTS OR COMPLEX TARGETS
 # 
@@ -468,3 +615,4 @@ setup:
 # 6. Auto-install dependencies within existing targets (like ensure-redis)
 # 7. Maintain the pattern: make <target> <environment>
 # 8. No new "dev", "prod", "setup" style targets - use existing ones 
+
