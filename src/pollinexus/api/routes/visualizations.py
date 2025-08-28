@@ -30,10 +30,10 @@ from ..models.responses import (
     ErrorResponse
 )
 
-router = APIRouter()
+router = APIRouter(tags=["3 - Visualizations"])
 
 
-@router.post("/visualizations/bee-distribution/", response_model=VisualizationResponse)
+@router.post("/visualizations/bee-distribution/", response_model=VisualizationResponse, tags=["📈 Data Visualizations"])
 @monitor_performance("api_bee_distribution_visualization")
 @track_errors("api_visualization")
 async def create_bee_distribution_visualization(
@@ -108,7 +108,7 @@ async def create_bee_distribution_visualization(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/visualizations/seasonal-patterns/", response_model=VisualizationResponse)
+@router.post("/visualizations/seasonal-patterns/", response_model=VisualizationResponse, tags=["📈 Data Visualizations"])
 @monitor_performance("api_seasonal_patterns_visualization")
 @track_errors("api_visualization")
 async def create_seasonal_patterns_visualization(
@@ -183,7 +183,7 @@ async def create_seasonal_patterns_visualization(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/visualizations/site-comparison/", response_model=VisualizationResponse)
+@router.post("/visualizations/site-comparison/", response_model=VisualizationResponse, tags=["📈 Data Visualizations"])
 @monitor_performance("api_site_comparison_visualization")
 @track_errors("api_visualization")
 async def create_site_comparison_visualization(
@@ -258,7 +258,7 @@ async def create_site_comparison_visualization(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/visualizations/dashboard/", response_model=VisualizationResponse)
+@router.post("/visualizations/dashboard/", response_model=VisualizationResponse, tags=["📈 Data Visualizations"])
 @monitor_performance("api_interactive_dashboard")
 @track_errors("api_visualization")
 async def create_interactive_dashboard_visualization(
@@ -333,7 +333,7 @@ async def create_interactive_dashboard_visualization(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/visualizations/batch/", response_model=List[VisualizationResponse])
+@router.post("/visualizations/batch/", response_model=List[VisualizationResponse], tags=["📈 Data Visualizations"])
 @monitor_performance("api_batch_visualization")
 @track_errors("api_visualization")
 async def create_batch_visualizations(
@@ -433,7 +433,7 @@ async def create_batch_visualizations(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/visualizations/{visualization_id}/status")
+@router.get("/visualizations/{visualization_id}/status", tags=["📈 Data Visualizations"])
 @monitor_performance("api_visualization_status")
 @track_errors("api_visualization")
 async def get_visualization_status(
@@ -494,7 +494,7 @@ async def get_visualization_status(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/visualizations/{visualization_id}/download")
+@router.get("/visualizations/{visualization_id}/download", tags=["📈 Data Visualizations"])
 @monitor_performance("api_visualization_download")
 @track_errors("api_visualization")
 async def download_visualization(
@@ -606,7 +606,7 @@ async def download_visualization(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/visualizations/{visualization_id}")
+@router.delete("/visualizations/{visualization_id}", tags=["📈 Data Visualizations"])
 @monitor_performance("api_visualization_cancel")
 @track_errors("api_visualization")
 async def cancel_visualization(
@@ -670,7 +670,7 @@ async def cancel_visualization(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/visualizations/available-types")
+@router.get("/visualizations/available-types", tags=["📈 Data Visualizations"])
 @monitor_performance("api_visualization_types")
 @track_errors("api_visualization")
 async def get_available_visualization_types():

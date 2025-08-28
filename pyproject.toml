@@ -114,7 +114,12 @@ Repository = "https://github.com/your-username/pollinexus.git"
 "Changelog" = "https://github.com/your-username/pollinexus/blob/main/docs/CHANGELOG.md"
 
 [project.scripts]
-pollinexus = "pollinexus.cli:main"
+pollinexus = "pollinexus.cli:cli"
+pollinexus-setup = "pollinexus.cli:setup"
+pollinexus-run = "pollinexus.cli:run"
+pollinexus-test = "pollinexus.cli:test"
+pollinexus-lint = "pollinexus.cli:lint"
+pollinexus-format = "pollinexus.cli:format"
 
 [tool.setuptools.packages.find]
 where = ["src"]

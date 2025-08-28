@@ -5,7 +5,7 @@ This module contains all endpoints related to data analysis operations
 with comprehensive logging and monitoring.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import time
@@ -13,7 +13,7 @@ from datetime import datetime
 
 from ...core.database import get_db
 from ...services.database_service import DatabaseService
-from ...tasks.celery_app import celery_app, get_task_status, cancel_task
+from ...tasks.celery_app import get_task_status, cancel_task
 from ...tasks.analysis import (
     analyze_bee_preferences,
     generate_plant_recommendations,
@@ -22,26 +22,21 @@ from ...tasks.analysis import (
 )
 from ...core.logging import logger, request_id, correlation_id, get_monitoring_metrics, reset_monitoring_metrics
 from ...core.metrics import monitor_performance
-from ...core.error_tracking import track_errors, error_tracker
+from ...core.error_tracking import track_errors
 from ..models.requests import (
     AnalysisJobCreate,
-    AnalysisJobUpdate,
     PlantRecommendationRequest,
     BeePreferenceRequest
 )
 from ..models.responses import (
     AnalysisJobResponse,
-    AnalysisJobListResponse,
-    PlantRecommendationListResponse,
-    BeeAnalysisListResponse,
-    SuccessResponse,
-    ErrorResponse
+    SuccessResponse
 )
 
 router = APIRouter()
 
 
-@router.get("/monitoring/metrics/", response_model=Dict[str, Any])
+@router.get("/monitoring/metrics/", response_model=Dict[str, Any], tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("api_monitoring_metrics")
 async def get_logging_metrics():
     """Get comprehensive logging and monitoring metrics."""
@@ -104,7 +99,7 @@ async def get_logging_metrics():
         raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {str(e)}")
 
 
-@router.post("/monitoring/metrics/reset/", response_model=SuccessResponse)
+@router.post("/monitoring/metrics/reset/", response_model=SuccessResponse, tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("api_monitoring_reset")
 async def reset_metrics():
     """Reset monitoring metrics (useful for testing or periodic resets)."""
@@ -152,7 +147,7 @@ async def reset_metrics():
         raise HTTPException(status_code=500, detail=f"Failed to reset metrics: {str(e)}")
 
 
-@router.post("/analysis/bee-preferences/", response_model=AnalysisJobResponse)
+@router.post("/analysis/bee-preferences/", response_model=AnalysisJobResponse, tags=["🤖 Machine Learning Analysis"])
 @monitor_performance("api_bee_preference_analysis")
 @track_errors("api_analysis")
 async def start_bee_preference_analysis(
@@ -244,7 +239,7 @@ async def start_bee_preference_analysis(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/analysis/plant-recommendations/", response_model=AnalysisJobResponse)
+@router.post("/analysis/plant-recommendations/", response_model=AnalysisJobResponse, tags=["🌱 Plant Species Analysis and Ranking"])
 @monitor_performance("api_plant_recommendations")
 @track_errors("api_analysis")
 async def start_plant_recommendation_analysis(
@@ -331,7 +326,7 @@ async def start_plant_recommendation_analysis(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/analysis/seasonal/", response_model=AnalysisJobResponse)
+@router.post("/analysis/seasonal/", response_model=AnalysisJobResponse, tags=["📅 Seasonal Coverage Analysis"])
 @monitor_performance("api_seasonal_analysis")
 @track_errors("api_analysis")
 async def start_seasonal_analysis(
@@ -412,7 +407,7 @@ async def start_seasonal_analysis(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/analysis/site-comparison/", response_model=AnalysisJobResponse)
+@router.post("/analysis/site-comparison/", response_model=AnalysisJobResponse, tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_site_comparison")
 @track_errors("api_analysis")
 async def start_site_comparison_analysis(
@@ -493,7 +488,7 @@ async def start_site_comparison_analysis(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/analysis/jobs/{job_id}", response_model=AnalysisJobResponse)
+@router.get("/analysis/jobs/{job_id}", response_model=AnalysisJobResponse, tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_analysis_job_get")
 @track_errors("api_analysis")
 async def get_analysis_job(
@@ -553,7 +548,7 @@ async def get_analysis_job(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/analysis/jobs/", response_model=List[AnalysisJobResponse])
+@router.get("/analysis/jobs/", response_model=List[AnalysisJobResponse], tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_analysis_job_list")
 @track_errors("api_analysis")
 async def list_analysis_jobs(
@@ -611,7 +606,7 @@ async def list_analysis_jobs(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/analysis/jobs/{job_id}/results")
+@router.get("/analysis/jobs/{job_id}/results", tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_analysis_results")
 @track_errors("api_analysis")
 async def get_analysis_results(
@@ -693,7 +688,7 @@ async def get_analysis_results(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/analysis/jobs/{job_id}/status")
+@router.get("/analysis/jobs/{job_id}/status", tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_analysis_status")
 @track_errors("api_analysis")
 async def get_analysis_job_status(
@@ -781,7 +776,7 @@ async def get_analysis_job_status(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/analysis/jobs/{job_id}")
+@router.delete("/analysis/jobs/{job_id}", tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_analysis_cancel")
 @track_errors("api_analysis")
 async def cancel_analysis_job(
@@ -873,7 +868,7 @@ async def cancel_analysis_job(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/analysis/stats")
+@router.get("/analysis/stats", tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_analysis_stats")
 @track_errors("api_analysis")
 async def get_analysis_statistics(

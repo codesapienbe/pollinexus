@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     database_pool_recycle: int = 3600
     
     # Celery settings
-    celery_broker_url: str = "memory://"
-    celery_result_backend: str = "memory://"
+    celery_broker_url: str = "redis://localhost:6379/0"  # Use Redis for local development
+    celery_result_backend: str = "redis://localhost:6379/0"  # Use Redis for results
     celery_task_time_limit: int = 1800  # 30 minutes
     celery_task_soft_time_limit: int = 1500  # 25 minutes
     celery_worker_max_tasks_per_child: int = 1000
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     lockout_duration: int = 900  # 15 minutes in seconds
     
     # Development security settings
-    disable_security_for_local: bool = False  # Disable security features for local development
+    disable_security_for_local: bool = True  # Disable security features for local development by default
     
     # Production settings
     debug: bool = False
@@ -120,6 +120,12 @@ class Settings(BaseSettings):
     keep_alive_timeout: int = 5
     max_connections: int = 1000
     max_connection_size: int = 16384
+    
+    # Shutdown settings
+    shutdown_graceful_timeout: int = 30  # seconds
+    shutdown_force_timeout: int = 5  # seconds
+    shutdown_enable_signal_handling: bool = True
+    shutdown_log_level: str = "WARNING"
     
     # Data processing limits
     max_dataset_rows: int = 1000000

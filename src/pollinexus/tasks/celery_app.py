@@ -17,11 +17,42 @@ from ..core.logging import logger, correlation_id
 from ..core.metrics import performance_monitor
 from ..core.error_tracking import error_tracker
 
+# Determine broker and backend URLs
+def get_celery_config():
+    """Get Celery configuration based on environment."""
+    if settings.is_development:
+        # For local development, try Redis first, fallback to memory
+        try:
+            import redis
+            # Test Redis connection
+            r = redis.Redis(host='localhost', port=6379, db=0)
+            r.ping()
+            logger.info("Redis connection successful, using Redis as Celery broker")
+            return {
+                'broker': 'redis://localhost:6379/0',
+                'backend': 'redis://localhost:6379/0'
+            }
+        except (ImportError, Exception) as e:
+            logger.warning(f"Redis not available ({e}), using eager mode for local development")
+            return {
+                'broker': 'memory://',
+                'backend': 'rpc://',
+                'task_always_eager': True  # Run tasks synchronously
+            }
+    else:
+        # Production configuration
+        return {
+            'broker': settings.celery_broker_url,
+            'backend': settings.celery_result_backend
+        }
+
+celery_config = get_celery_config()
+
 # Create Celery app
 celery_app = Celery(
     "pollinexus",
-    broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend,
+    broker=celery_config['broker'],
+    backend=celery_config['backend'],
     include=[
         'pollinexus.tasks.analysis',
         'pollinexus.tasks.visualization',
@@ -44,7 +75,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=30 * 60,  # 30 minutes
     task_soft_time_limit=25 * 60,  # 25 minutes
-    task_always_eager=False,  # Set to True for testing
+    task_always_eager=celery_config.get('task_always_eager', False),  # Set to True for testing
     
     # Result settings
     result_expires=3600,  # 1 hour

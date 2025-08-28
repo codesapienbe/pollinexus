@@ -68,6 +68,7 @@ help:
 	@echo "  run         - Run the application"
 	@echo "  dev         - Run in development mode"
 	@echo "  prod        - Run in production mode"
+	@echo "  setup       - Setup local development environment"
 	@echo ""
 	@echo "$(GREEN)Environments:$(NC)"
 	@echo "  local       - Local development with uv"
@@ -91,6 +92,7 @@ help:
 	@echo "  make run remote      - Run in Vagrant VM"
 	@echo "  make dev local       - Local development"
 	@echo "  make prod docker     - Docker production"
+	@echo "  make setup           - Setup local development environment"
 
 # Main targets with environment routing
 build:
@@ -429,3 +431,8 @@ setup-remote:
 		exit 1; \
 	fi
 	@echo "$(GREEN)Remote environment is ready!$(NC)" 
+
+# Setup local development environment
+setup:
+	@echo "$(BLUE)Setting up local development environment...$(NC)"
+	@python -m pollinexus.cli setup 

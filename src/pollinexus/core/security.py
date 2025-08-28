@@ -302,18 +302,27 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         """Process request through security checks."""
         client_ip = self._get_client_ip(request)
         
-        # Skip security checks if disabled for local development
-        if settings.disable_security_for_local:
+        # Skip security checks for local development
+        is_local = (
+            settings.disable_security_for_local or
+            settings.is_development or
+            client_ip in ["127.0.0.1", "localhost", "::1"] or
+            request.url.hostname in ["localhost", "127.0.0.1", "host.docker.internal"]
+        )
+        
+        if is_local:
             logger.debug(
                 "Security checks bypassed for local development",
                 extra={
                     "client_ip": client_ip,
+                    "hostname": request.url.hostname,
                     "url": str(request.url),
-                    "operation": "security_bypass"
+                    "operation": "security_bypass",
+                    "reason": "local_development"
                 }
             )
             response = await call_next(request)
-            # Still add basic security headers
+            # Still add basic security headers for local development
             self._add_basic_security_headers(response)
             return response
         

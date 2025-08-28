@@ -26,7 +26,7 @@ from ..models.responses import DatasetResponse, DatasetListResponse, SuccessResp
 router = APIRouter()
 
 
-@router.post("/datasets/", response_model=DatasetResponse)
+@router.post("/datasets/", response_model=DatasetResponse, tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("api_dataset_create")
 @track_errors("api_dataset_upload")
 async def create_dataset(
@@ -243,7 +243,7 @@ async def create_dataset(
 
 @monitor_performance("api_dataset_list")
 @track_errors("api_dataset_list")
-@router.get("/datasets/", response_model=DatasetListResponse)
+@router.get("/datasets/", response_model=DatasetListResponse, tags=["📊 Exploratory Data Analysis (EDA)"])
 async def list_datasets(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of records to return"),
@@ -310,7 +310,7 @@ async def list_datasets(
 
 @monitor_performance("api_dataset_get")
 @track_errors("api_dataset_get")
-@router.get("/datasets/{dataset_id}", response_model=DatasetResponse)
+@router.get("/datasets/{dataset_id}", response_model=DatasetResponse, tags=["📊 Exploratory Data Analysis (EDA)"])
 async def get_dataset(
     dataset_id: int = Path(..., description="Dataset ID"),
     db: Session = Depends(get_db)
@@ -367,7 +367,7 @@ async def get_dataset(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.put("/datasets/{dataset_id}", response_model=DatasetResponse)
+@router.put("/datasets/{dataset_id}", response_model=DatasetResponse, tags=["🧹 Data Cleaning and Preprocessing"])
 @monitor_performance("api_dataset_update")
 @track_errors("api_dataset_update")
 async def update_dataset(
@@ -432,7 +432,7 @@ async def update_dataset(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/datasets/{dataset_id}")
+@router.delete("/datasets/{dataset_id}", tags=["🧹 Data Cleaning and Preprocessing"])
 @monitor_performance("api_dataset_delete")
 @track_errors("api_dataset_delete")
 async def delete_dataset(
@@ -525,7 +525,7 @@ async def delete_dataset(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/datasets/{dataset_id}/info")
+@router.get("/datasets/{dataset_id}/info", tags=["🔍 Data Quality Assessment"])
 @monitor_performance("api_dataset_info")
 @track_errors("api_dataset_info")
 async def get_dataset_info(
@@ -601,7 +601,7 @@ async def get_dataset_info(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/datasets/search")
+@router.post("/datasets/search", tags=["📊 Exploratory Data Analysis (EDA)"])
 @monitor_performance("api_dataset_search")
 @track_errors("api_dataset_search")
 async def search_datasets(
@@ -670,7 +670,7 @@ async def search_datasets(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/datasets/{dataset_id}/health")
+@router.get("/datasets/{dataset_id}/health", tags=["🔍 Data Quality Assessment"])
 @monitor_performance("api_dataset_health")
 @track_errors("api_dataset_health")
 async def get_dataset_health(

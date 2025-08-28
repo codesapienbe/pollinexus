@@ -161,4 +161,22 @@ def get_database_info() -> dict:
             "job_count": 0,
             "connection_status": "error",
             "error": str(e)
-        } 
+        }
+
+
+def close_database_connections():
+    """Close all database connections gracefully."""
+    try:
+        logger.info("Closing database connections...")
+        
+        # Close all sessions
+        SessionLocal.close_all()
+        
+        # Dispose of the engine
+        engine.dispose()
+        
+        logger.info("Database connections closed successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to close database connections: {e}")
+        raise 

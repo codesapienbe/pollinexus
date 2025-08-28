@@ -22,6 +22,8 @@ from ..core.error_tracking import track_errors, error_tracker
 from ..core.auth import get_current_user, verify_otp_and_generate_token
 from ..core.security import create_security_middleware, security_monitor
 from ..core.health import health_monitor, get_health_status, get_quick_health
+from ..core.shutdown import shutdown_manager, shutdown_context
+from ..core.shutdown_monitoring import shutdown_monitor
 from ..services.user_service import UserService
 from .routes import datasets, analysis, visualizations
 from .models.user_models import (
@@ -49,6 +51,9 @@ async def lifespan(app: FastAPI):
     # Initialize error tracker
     error_tracker.initialize()
 
+    # Reset OpenAPI schema to avoid any stale caching between reloads
+    app.openapi_schema = None
+
     # Ensure database tables exist (idempotent)
     try:
         create_tables()
@@ -73,16 +78,49 @@ async def lifespan(app: FastAPI):
         # Fail fast - don't start the app without database tables
         raise RuntimeError(f"Database initialization failed: {e}")
     
+    # Register application-specific cleanup handlers
+    def cleanup_application_resources():
+        """Clean up application-specific resources."""
+        try:
+            logger.info("Cleaning up application resources...")
+            
+            # Close any open file handles
+            import gc
+            gc.collect()
+            
+            logger.info("Application resources cleaned up")
+        except Exception as e:
+            logger.error(f"Failed to cleanup application resources: {e}")
+    
+    shutdown_manager.register_cleanup_handler(cleanup_application_resources)
+    
     yield
     
-    # Shutdown
-    logger.info(
-        "Pollinexus API shutting down",
-        extra={"operation": "app_shutdown"}
-    )
+    # Shutdown - use graceful shutdown manager only outside development
+    if not settings.is_development:
+        async with shutdown_context():
+            logger.info(
+                "Pollinexus API shutting down",
+                extra={"operation": "app_shutdown"}
+            )
 
 
 # Create FastAPI application
+# Scenario-based OpenAPI tags for simple grouping
+openapi_tags = [
+    {"name": "🔧 Setup, Data Loading, and System Monitoring", "description": "Setup, data loading, health, security, metrics, shutdown."},
+    {"name": "🔍 Data Quality Assessment", "description": "Validation, dataset health, profiling."},
+    {"name": "🧹 Data Cleaning and Preprocessing", "description": "Dataset updates and cleanup operations."},
+    {"name": "📊 Exploratory Data Analysis (EDA)", "description": "Searching, listing, site comparisons, stats."},
+    {"name": "📈 Data Visualizations", "description": "Charts and dashboards."},
+    {"name": "🤖 Machine Learning Analysis", "description": "Bee preferences and ML-driven analyses."},
+    {"name": "🌱 Plant Species Analysis and Ranking", "description": "Plant recommendation analysis and ranking."},
+    {"name": "🏆 Top 3 Plant Recommendations", "description": "Top-N recommendation outcomes and insights."},
+    {"name": "📅 Seasonal Coverage Analysis", "description": "Seasonal trend and coverage analyses."},
+    {"name": "🎯 Conclusions and Strategic Recommendations", "description": "Summary insights and strategic guidance."},
+    {"name": "📄 Project Summary", "description": "High-level API and project summary info."}
+]
+
 app = FastAPI(
     title="Pollinexus API",
     description="Data-Driven Pollinator Conservation API for Environmental Agencies",
@@ -90,11 +128,30 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    openapi_tags=openapi_tags
 )
 
-# Add Security middleware (must be first)
-app.add_middleware(create_security_middleware)
+# Add Security middleware only for non-local development
+if not settings.disable_security_for_local and not settings.is_development:
+    logger.info(
+        "Adding security middleware for production environment",
+        extra={
+            "environment": settings.environment,
+            "operation": "app_startup"
+        }
+    )
+    app.add_middleware(create_security_middleware)
+else:
+    logger.info(
+        "Security middleware disabled for local development",
+        extra={
+            "environment": settings.environment,
+            "disable_security_for_local": settings.disable_security_for_local,
+            "is_development": settings.is_development,
+            "operation": "app_startup"
+        }
+    )
 
 # Add CORS middleware
 app.add_middleware(
@@ -105,11 +162,12 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
-# Add TrustedHost middleware
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=settings.trusted_hosts
-)
+# Add TrustedHost middleware only for production
+if not settings.disable_security_for_local and not settings.is_development:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.trusted_hosts
+    )
 
 
 @app.middleware("http")
@@ -292,7 +350,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Enhanced Health check endpoints
-@app.get("/api/v1/health", tags=["Health API"])
+@app.get("/api/v1/health", tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("health_check")
 async def health_check():
     """Quick health check endpoint for load balancers."""
@@ -357,7 +415,7 @@ async def health_check():
         )
 
 
-@app.get("/api/v1/health/detailed", tags=["Health API"])
+@app.get("/api/v1/health/detailed", tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("health_check_detailed")
 async def detailed_health_check():
     """Comprehensive health check with all system components."""
@@ -416,7 +474,7 @@ async def detailed_health_check():
         )
 
 
-@app.get("/api/v1/security/status", tags=["Security API"])
+@app.get("/api/v1/security/status", tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("security_status")
 async def security_status():
     """Get security monitoring status and violation summary."""
@@ -449,8 +507,78 @@ async def security_status():
         raise HTTPException(status_code=500, detail="Failed to retrieve security status")
 
 
+@app.get("/api/v1/shutdown/status", tags=["🔧 Setup, Data Loading, and System Monitoring"])
+@monitor_performance("shutdown_status")
+async def shutdown_status():
+    """Get shutdown manager status and configuration."""
+    
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+    
+    try:
+        status = shutdown_manager.get_shutdown_status()
+        
+        return {
+            "timestamp": time.time(),
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "shutdown_status": status,
+            "graceful_timeout": 30,
+            "force_timeout": 5
+        }
+        
+    except Exception as e:
+        logger.error(
+            "Shutdown status check failed",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "shutdown_status"
+            }
+        )
+        
+        raise HTTPException(status_code=500, detail="Failed to retrieve shutdown status")
+
+
+@app.get("/api/v1/shutdown/metrics", tags=["🔧 Setup, Data Loading, and System Monitoring"])
+@monitor_performance("shutdown_metrics")
+async def shutdown_metrics():
+    """Get shutdown metrics and monitoring data."""
+    
+    req_id = request_id.get()
+    corr_id = correlation_id.get()
+    
+    try:
+        current_status = shutdown_monitor.get_current_status()
+        metrics_summary = shutdown_monitor.get_metrics_summary()
+        recent_metrics = shutdown_monitor.get_recent_metrics(count=5)
+        
+        return {
+            "timestamp": time.time(),
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "current_status": current_status,
+            "metrics_summary": metrics_summary,
+            "recent_metrics": recent_metrics
+        }
+        
+    except Exception as e:
+        logger.error(
+            "Shutdown metrics check failed",
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "shutdown_metrics"
+            }
+        )
+        
+        raise HTTPException(status_code=500, detail="Failed to retrieve shutdown metrics")
+
+
 # Root endpoint
-@app.get("/api/v1/", tags=["Root API"])
+@app.get("/api/v1/", tags=["📄 Project Summary"])
 async def root():
     """Root endpoint with API information."""
     
@@ -482,27 +610,24 @@ async def root():
 app.include_router(
     datasets.router,
     prefix="/api/v1",
-    tags=["Datasets"],
     responses={404: {"description": "Not found"}}
 )
 
 app.include_router(
     analysis.router,
     prefix="/api/v1",
-    tags=["Analysis"],
     responses={404: {"description": "Not found"}}
 )
 
 app.include_router(
     visualizations.router,
     prefix="/api/v1",
-    tags=["Visualizations"],
     responses={404: {"description": "Not found"}}
 )
 
 
 # API information endpoint
-@app.get("/api/v1/info", tags=["API Info API"])
+@app.get("/api/v1/info", tags=["📄 Project Summary"])
 async def api_info():
     """Get comprehensive API information and capabilities."""
     
@@ -578,7 +703,7 @@ async def api_info():
 
 
 # Metrics endpoint for monitoring
-@app.get("/api/v1/metrics", tags=["Monitoring API"])
+@app.get("/api/v1/metrics", tags=["🔧 Setup, Data Loading, and System Monitoring"])
 @monitor_performance("metrics_endpoint")
 async def get_metrics():
     """Get API metrics and performance statistics."""
@@ -635,7 +760,7 @@ async def get_metrics():
 # USER API ENDPOINTS
 ############################################################
 
-@app.post("/user/send-verification", response_model=VerificationResponse, tags=["User API"])
+@app.post("/user/send-verification", response_model=VerificationResponse, tags=["0 - System"])
 async def send_verification(verification_request: VerificationRequest):
     """Send verification code to user via email or WhatsApp."""
     
@@ -690,7 +815,7 @@ async def send_verification(verification_request: VerificationRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/user/register", response_model=UserResponseWithId, tags=["User API"])
+@app.post("/user/register", response_model=UserResponseWithId, tags=["0 - System"])
 async def register_user(user_data: UserRegistration):
     """Register a new user with email OTP verification."""
     
@@ -723,7 +848,7 @@ async def register_user(user_data: UserRegistration):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/user/login", tags=["User API"])
+@app.post("/user/login", tags=["0 - System"])
 async def login(login_data: UserLoginRequest):
     """Request OTP for email login."""
     
@@ -755,19 +880,19 @@ async def login(login_data: UserLoginRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/user/verify-registration", response_model=TokenResponse, tags=["User API"])
+@app.post("/user/verify-registration", response_model=TokenResponse, tags=["0 - System"])
 async def verify_registration(request: VerifyOTPRequest):
     """Verify registration OTP and activate account."""
     return await verify_otp_and_generate_token(request, mark_verified=True)
 
 
-@app.post("/user/verify-login", response_model=TokenResponse, tags=["User API"])
+@app.post("/user/verify-login", response_model=TokenResponse, tags=["0 - System"])
 async def verify_login(request: VerifyOTPRequest):
     """Verify login OTP and generate access token."""
     return await verify_otp_and_generate_token(request, mark_verified=False)
 
 
-@app.get("/api/v1/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["User API"])
+@app.get("/api/v1/user/me", response_model=UserResponseWithFaces, summary="Get current user information", tags=["0 - System"])
 async def get_me(current_user: dict = Depends(get_current_user)):
     """Get current authenticated user's information."""
     try:
