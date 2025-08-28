@@ -296,12 +296,12 @@ python test/run_tests.py --type api
 
 ### API Documentation (by Tag Group)
 
-- **[docs/api-health-info.md](docs/api-health-info.md)**
-- **[docs/api-auth.md](docs/api-auth.md)**
-- **[docs/api-datasets.md](docs/api-datasets.md)**
-- **[docs/api-analysis.md](docs/api-analysis.md)**
-- **[docs/api-visualizations.md](docs/api-visualizations.md)**
-- **[docs/api-monitoring.md](docs/api-monitoring.md)**
+- **[docs/api-groups/api-health-info.md](docs/api-groups/api-health-info.md)**
+- **[docs/api-groups/api-auth.md](docs/api-groups/api-auth.md)**
+- **[docs/api-groups/api-datasets.md](docs/api-groups/api-datasets.md)**
+- **[docs/api-groups/api-analysis.md](docs/api-groups/api-analysis.md)**
+- **[docs/api-groups/api-visualizations.md](docs/api-groups/api-visualizations.md)**
+- **[docs/api-groups/api-monitoring.md](docs/api-groups/api-monitoring.md)**
 
 ## 🤝 Contributing
 
