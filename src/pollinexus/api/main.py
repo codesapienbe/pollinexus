@@ -92,6 +92,30 @@ async def lifespan(app: FastAPI):
         # Fail fast - don't start the app without database tables
         raise RuntimeError(f"Database initialization failed: {e}")
     
+    # Ensure upload directory exists
+    try:
+        upload_path = settings.get_upload_path()
+        upload_path.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            "Upload directory ensured",
+            extra={
+                "operation": "app_startup",
+                "component": "upload_directory",
+                "upload_path": str(upload_path)
+            }
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to create upload directory - application cannot start",
+            extra={
+                "operation": "app_startup",
+                "component": "upload_directory",
+                "error": str(e)
+            }
+        )
+        # Fail fast - don't start the app without upload directory
+        raise RuntimeError(f"Upload directory initialization failed: {e}")
+    
     # Register application-specific cleanup handlers
     def cleanup_application_resources():
         """Clean up application-specific resources."""

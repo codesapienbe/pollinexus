@@ -60,8 +60,13 @@ class GracefulShutdownManager:
         self._is_shutting_down = False
         self._shutdown_lock = threading.Lock()
         
-        # Register default signal handlers only outside development
-        if getattr(settings, "shutdown_enable_signal_handling", True) and not settings.is_development:
+        # Double CTRL+C tracking
+        self._sigint_count = 0
+        self._sigint_last_time = 0
+        self._sigint_window = 2.0  # 2 second window for double CTRL+C
+        
+        # Register default signal handlers (enable in development for double CTRL+C)
+        if getattr(settings, "shutdown_enable_signal_handling", True):
             self._register_signal_handlers()
         
         logger.info(
@@ -70,7 +75,8 @@ class GracefulShutdownManager:
                 "component": "shutdown_manager",
                 "operation": "initialization",
                 "graceful_timeout": 30,
-                "force_timeout": 5
+                "force_timeout": 5,
+                "double_ctrlc_window": self._sigint_window
             }
         )
     
@@ -87,11 +93,15 @@ class GracefulShutdownManager:
                 signal.SIGTERM, self._signal_handler
             )
             
-            # SIGUSR1 (custom graceful shutdown)
-            if hasattr(signal, 'SIGUSR1'):
-                self._original_signal_handlers[signal.SIGUSR1] = signal.signal(
-                    signal.SIGUSR1, self._signal_handler
-                )
+            # SIGUSR1 (custom graceful shutdown) - only on Unix systems
+            try:
+                if hasattr(signal, 'SIGUSR1'):
+                    self._original_signal_handlers[signal.SIGUSR1] = signal.signal(
+                        signal.SIGUSR1, self._signal_handler
+                    )
+            except (AttributeError, OSError):
+                # SIGUSR1 not available on Windows
+                pass
             
             logger.info(
                 "Signal handlers registered",
@@ -114,8 +124,66 @@ class GracefulShutdownManager:
             )
     
     def _signal_handler(self, signum: int, frame):
-        """Handle shutdown signals with comprehensive logging."""
+        """Handle shutdown signals with comprehensive logging and double CTRL+C support."""
         
+        current_time = time.time()
+        
+        # Special handling for SIGINT (CTRL+C)
+        if signum == signal.SIGINT:
+            # Check if this is within the double-press window
+            if (current_time - self._sigint_last_time) <= self._sigint_window:
+                self._sigint_count += 1
+                logger.warning(
+                    f"CTRL+C pressed {self._sigint_count} times",
+                    extra={
+                        "component": "shutdown_manager",
+                        "operation": "signal_handler",
+                        "signal_number": signum,
+                        "signal_name": "SIGINT",
+                        "sigint_count": self._sigint_count,
+                        "time_since_last": current_time - self._sigint_last_time
+                    }
+                )
+                
+                # Second CTRL+C triggers cold shutdown
+                if self._sigint_count >= 2:
+                    logger.critical(
+                        "Double CTRL+C detected - initiating cold shutdown",
+                        extra={
+                            "component": "shutdown_manager",
+                            "operation": "cold_shutdown",
+                            "signal_number": signum,
+                            "signal_name": "SIGINT",
+                            "sigint_count": self._sigint_count
+                        }
+                    )
+                    
+                    # Force immediate shutdown
+                    self._force_cold_shutdown()
+                    return
+                else:
+                    # First CTRL+C - show warning and continue
+                    print(f"\n⚠️  Press CTRL+C again within {self._sigint_window} seconds to force shutdown")
+                    self._sigint_last_time = current_time
+                    return
+            else:
+                # Reset counter if outside window
+                self._sigint_count = 1
+                self._sigint_last_time = current_time
+                logger.warning(
+                    "CTRL+C pressed (first time)",
+                    extra={
+                        "component": "shutdown_manager",
+                        "operation": "signal_handler",
+                        "signal_number": signum,
+                        "signal_name": "SIGINT",
+                        "sigint_count": self._sigint_count
+                    }
+                )
+                print(f"\n⚠️  Press CTRL+C again within {self._sigint_window} seconds to force shutdown")
+                return
+        
+        # Handle other signals normally
         with self._shutdown_lock:
             if self._is_shutting_down:
                 logger.warning(
@@ -136,7 +204,7 @@ class GracefulShutdownManager:
             reason = ShutdownReason.SIGNAL_INTERRUPT
         elif signum == signal.SIGTERM:
             reason = ShutdownReason.SIGNAL_TERMINATE
-        elif hasattr(signal, 'SIGUSR1') and signum == signal.SIGUSR1:
+        elif hasattr(signal, 'SIGUSR1') and signum == getattr(signal, 'SIGUSR1', None):
             reason = ShutdownReason.MANUAL_SHUTDOWN
         else:
             reason = ShutdownReason.UNKNOWN
@@ -173,6 +241,24 @@ class GracefulShutdownManager:
         
         # Trigger shutdown event
         self._shutdown_event.set()
+    
+    def _force_cold_shutdown(self):
+        """Force immediate cold shutdown without graceful cleanup."""
+        logger.critical(
+            "Initiating cold shutdown - bypassing graceful cleanup",
+            extra={
+                "component": "shutdown_manager",
+                "operation": "cold_shutdown",
+                "reason": "double_ctrlc"
+            }
+        )
+        
+        # Log critical shutdown event
+        shutdown_monitor.record_phase_start(ShutdownPhase.FORCE_SHUTDOWN)
+        
+        # Force exit without cleanup
+        print("\n🛑 Cold shutdown initiated - exiting immediately")
+        sys.exit(1)
     
     def register_cleanup_handler(self, handler: Callable, is_async: bool = False):
         """

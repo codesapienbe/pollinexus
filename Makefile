@@ -439,6 +439,8 @@ clean:
 	@rm -rf *.egg-info/
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete
+	@rm -f pollinexus.db
+	@rm -f *.db
 	@echo "$(GREEN)Clean complete!$(NC)"
 
 clean-local:
@@ -448,6 +450,8 @@ clean-local:
 	@rm -rf *.egg-info/
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete
+	@rm -f pollinexus.db
+	@rm -f *.db
 	@echo "$(GREEN)Local clean complete!$(NC)"
 
 clean-docker:

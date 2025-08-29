@@ -154,10 +154,15 @@ class Settings(BaseSettings):
         return self.environment.lower() == "staging"
     
     def get_upload_path(self) -> Path:
-        """Get the upload directory path."""
-        upload_path = Path(self.upload_dir)
-        upload_path.mkdir(exist_ok=True)
+        """Get the upload directory path with proper absolute path handling."""
+        # Use absolute path from current working directory
+        upload_path = Path.cwd() / self.upload_dir
+        upload_path.mkdir(exist_ok=True, parents=True)
         return upload_path
+    
+    def get_absolute_upload_path(self) -> str:
+        """Get the absolute upload directory path as string."""
+        return str(self.get_upload_path())
     
     def get_log_file_path(self) -> Path:
         """Get the log file path."""

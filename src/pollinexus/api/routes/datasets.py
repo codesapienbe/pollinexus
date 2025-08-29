@@ -5,7 +5,7 @@ This module contains all endpoints related to dataset operations
 with comprehensive logging and monitoring.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Path as PathParam
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import shutil
@@ -14,6 +14,8 @@ from pathlib import Path as PathLib
 import time
 
 from ...core.database import get_db
+from ...core.config import settings
+from ...core.upload_manager import upload_manager
 from ...services.database_service import DatabaseService
 from ...services.data_service import DataService
 from ...core.logging import logger, request_id, correlation_id
@@ -129,19 +131,8 @@ async def create_dataset(
                 detail=f"File already exists as dataset '{existing_dataset.name}' (ID: {existing_dataset.id})"
             )
         
-        # Create upload directory
-        upload_dir = PathLib("uploads")
-        upload_dir.mkdir(exist_ok=True)
-        
-        # Generate unique filename
-        timestamp = int(time.time())
-        sanitized_original = provided_filename.replace(' ', '_')
-        safe_filename = f"{timestamp}_{sanitized_original}"
-        file_path = upload_dir / safe_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Save file using upload manager
+        file_path, safe_filename = upload_manager.save_uploaded_file(file, provided_filename)
         
         logger.debug(
             "File saved successfully",
@@ -193,7 +184,7 @@ async def create_dataset(
             raise HTTPException(status_code=400, detail=f"Error loading dataset: {str(e)}")
         
         # Create dataset record with checksum
-        dataset_name = PathLib(provided_filename).stem or f"dataset_{timestamp}"
+        dataset_name = PathLib(provided_filename).stem or f"dataset_{int(time.time())}"
         dataset_create = DatasetCreate(
             name=dataset_name,
             description=None,
@@ -257,12 +248,14 @@ async def list_datasets(
     
     logger.info(
         "Dataset list request received",
-        request_id=req_id,
-        correlation_id=corr_id,
-        skip=skip,
-        limit=limit,
-        search=search,
-        operation="api_dataset_list"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "skip": skip,
+            "limit": limit,
+            "search": search,
+            "operation": "api_dataset_list"
+        }
     )
     
     try:
@@ -288,11 +281,13 @@ async def list_datasets(
         
         logger.info(
             "Dataset list retrieved successfully",
-            request_id=req_id,
-            correlation_id=corr_id,
-            total_datasets=total_count,
-            returned_datasets=len(datasets),
-            operation="api_dataset_list"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "total_datasets": total_count,
+                "returned_datasets": len(datasets),
+                "operation": "api_dataset_list"
+            }
         )
         
         return response
@@ -300,10 +295,12 @@ async def list_datasets(
     except Exception as e:
         logger.error(
             "Dataset list retrieval failed",
-            request_id=req_id,
-            correlation_id=corr_id,
-            error=str(e),
-            operation="api_dataset_list"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "error": str(e),
+                "operation": "api_dataset_list"
+            }
         )
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -312,7 +309,7 @@ async def list_datasets(
 @track_errors("api_dataset_get")
 @router.get("/datasets/{dataset_id}", response_model=DatasetResponse, tags=["📊 Exploratory Data Analysis (EDA)"])
 async def get_dataset(
-    dataset_id: int = Path(..., description="Dataset ID"),
+    dataset_id: int = PathParam(..., description="Dataset ID"),
     db: Session = Depends(get_db)
 ):
     """Get dataset by ID with detailed information."""
@@ -371,7 +368,7 @@ async def get_dataset(
 @monitor_performance("api_dataset_update")
 @track_errors("api_dataset_update")
 async def update_dataset(
-    dataset_id: int = Path(..., description="Dataset ID"),
+    dataset_id: int = PathParam(..., description="Dataset ID"),
     dataset_update: DatasetUpdate = None,
     db: Session = Depends(get_db)
 ):
@@ -436,7 +433,7 @@ async def update_dataset(
 @monitor_performance("api_dataset_delete")
 @track_errors("api_dataset_delete")
 async def delete_dataset(
-    dataset_id: int = Path(..., description="Dataset ID"),
+    dataset_id: int = PathParam(..., description="Dataset ID"),
     db: Session = Depends(get_db)
 ):
     """Delete dataset and associated files."""
@@ -529,7 +526,7 @@ async def delete_dataset(
 @monitor_performance("api_dataset_info")
 @track_errors("api_dataset_info")
 async def get_dataset_info(
-    dataset_id: int = Path(..., description="Dataset ID"),
+    dataset_id: int = PathParam(..., description="Dataset ID"),
     db: Session = Depends(get_db)
 ):
     """Get detailed dataset information and statistics."""
@@ -539,10 +536,12 @@ async def get_dataset_info(
     
     logger.info(
         "Dataset info request received",
-        request_id=req_id,
-        correlation_id=corr_id,
-        dataset_id=dataset_id,
-        operation="api_dataset_info"
+        extra={
+            "request_id": req_id,
+            "correlation_id": corr_id,
+            "dataset_id": dataset_id,
+            "operation": "api_dataset_info"
+        }
     )
     
     try:
@@ -552,16 +551,41 @@ async def get_dataset_info(
         if not dataset:
             logger.warning(
                 "Dataset not found for info request",
-                request_id=req_id,
-                correlation_id=corr_id,
-                dataset_id=dataset_id,
-                operation="api_dataset_info"
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "dataset_id": dataset_id,
+                    "operation": "api_dataset_info"
+                }
             )
             raise HTTPException(status_code=404, detail="Dataset not found")
         
+        # Check if file exists and get absolute path
+        file_path = PathLib(dataset.file_path)
+        if not file_path.is_absolute():
+            # Convert relative path to absolute path
+            file_path = settings.get_upload_path() / file_path.name
+        
+        if not file_path.exists():
+            logger.error(
+                "Dataset file not found",
+                extra={
+                    "request_id": req_id,
+                    "correlation_id": corr_id,
+                    "dataset_id": dataset_id,
+                    "file_path": str(file_path),
+                    "original_path": dataset.file_path,
+                    "operation": "api_dataset_info"
+                }
+            )
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Dataset file not found: {file_path.name}"
+            )
+        
         # Get dataset statistics
         data_service = DataService()
-        data = data_service.load_dataset(dataset.file_path)
+        data = data_service.load_dataset(str(file_path))
         dataset_info = data_service.get_dataset_info(data)
         
         # Combine dataset and statistics
@@ -569,20 +593,22 @@ async def get_dataset_info(
             "dataset": dataset,
             "statistics": dataset_info,
             "file_info": {
-                "file_path": dataset.file_path,
+                "file_path": str(file_path),
                 "file_size_mb": dataset_info.get('memory_usage_mb', 0),
-                "file_exists": os.path.exists(dataset.file_path)
+                "file_exists": True
             }
         }
         
         logger.info(
             "Dataset info retrieved successfully",
-            request_id=req_id,
-            correlation_id=corr_id,
-            dataset_id=dataset_id,
-            total_records=dataset_info.get('total_records', 0),
-            total_columns=dataset_info.get('total_columns', 0),
-            operation="api_dataset_info"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "dataset_id": dataset_id,
+                "total_records": dataset_info.get('total_records', 0),
+                "total_columns": dataset_info.get('total_columns', 0),
+                "operation": "api_dataset_info"
+            }
         )
         
         return response
@@ -592,11 +618,13 @@ async def get_dataset_info(
     except Exception as e:
         logger.error(
             "Dataset info retrieval failed",
-            request_id=req_id,
-            correlation_id=corr_id,
-            dataset_id=dataset_id,
-            error=str(e),
-            operation="api_dataset_info"
+            extra={
+                "request_id": req_id,
+                "correlation_id": corr_id,
+                "dataset_id": dataset_id,
+                "error": str(e),
+                "operation": "api_dataset_info"
+            }
         )
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -674,7 +702,7 @@ async def search_datasets(
 @monitor_performance("api_dataset_health")
 @track_errors("api_dataset_health")
 async def get_dataset_health(
-    dataset_id: int = Path(..., description="Dataset ID"),
+    dataset_id: int = PathParam(..., description="Dataset ID"),
     db: Session = Depends(get_db)
 ):
     """Get dataset health and validation status."""
@@ -777,3 +805,5 @@ async def get_dataset_health(
             operation="api_dataset_health"
         )
         raise HTTPException(status_code=500, detail="Internal server error") 
+
+

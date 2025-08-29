@@ -555,9 +555,35 @@ class HealthMonitor:
             # Check configuration
             config_warnings = settings.validate_configuration()
             
-            # Check file system permissions
+            # Check file system permissions and create upload directory if needed
             upload_path = settings.get_upload_path()
-            can_write = upload_path.exists() and upload_path.is_dir()
+            can_write = False
+            
+            try:
+                # Ensure upload directory exists
+                upload_path.mkdir(parents=True, exist_ok=True)
+                can_write = upload_path.exists() and upload_path.is_dir()
+                
+                # Test write permission by creating a temporary file
+                if can_write:
+                    test_file = upload_path / ".health_check_test"
+                    try:
+                        test_file.write_text("health_check")
+                        test_file.unlink()  # Clean up
+                        can_write = True
+                    except Exception:
+                        can_write = False
+                        
+            except Exception as e:
+                can_write = False
+                logger.warning(
+                    "Upload directory check failed",
+                    extra={
+                        "upload_path": str(upload_path),
+                        "error": str(e),
+                        "operation": "health_check"
+                    }
+                )
             
             status = HealthStatus.HEALTHY
             warnings = []
@@ -588,6 +614,13 @@ class HealthMonitor:
             }
             
         except Exception as e:
+            logger.error(
+                "Application status health check failed",
+                extra={
+                    "error": str(e),
+                    "operation": "health_check"
+                }
+            )
             return {
                 "status": HealthStatus.CRITICAL.value,
                 "message": "Failed to check application status",
