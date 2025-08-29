@@ -1,0 +1,62 @@
+{
+  "timestamp": "2025-08-29 14:29:06",
+  "analysis_config": {
+    "data_file": "farm_data_for_publication.csv",
+    "output_dir": "c:\\Users\\Administrator\\Projects\\pollinexus\\notebooks\\outputs",
+    "min_observations_threshold": 5,
+    "top_n_plants": 3,
+    "scoring_weights": {
+      "native_bee_ratio": 0.4,
+      "diversity": 0.3,
+      "abundance": 0.3
+    },
+    "figure_size": [
+      12,
+      8
+    ],
+    "color_palette": "husl",
+    "plot_style": "seaborn-v0_8",
+    "random_state": 42,
+    "test_size": 0.2,
+    "cv_folds": 5
+  },
+  "top_plants": [
+    {
+      "rank": 1,
+      "name": "Cosmos bipinnatus",
+      "composite_score": 0.901,
+      "total_observations": 340,
+      "bee_species_diversity": 38,
+      "native_bee_ratio": 0.753
+    },
+    {
+      "rank": 2,
+      "name": "Rudbeckia hirta",
+      "composite_score": 0.707,
+      "total_observations": 159,
+      "bee_species_diversity": 23,
+      "native_bee_ratio": 0.994
+    },
+    {
+      "rank": 3,
+      "name": "Monarda punctata",
+      "composite_score": 0.698,
+      "total_observations": 279,
+      "bee_species_diversity": 15,
+      "native_bee_ratio": 0.875
+    }
+  ],
+  "key_insights": [
+    "Analyzed 25 plant species with sufficient observation data",
+    "Average composite score across all plants: 0.459",
+    "Top plant (Cosmos bipinnatus) scored 0.901",
+    "Most important factor for native bee attraction: Time of Day (45.9% importance)"
+  ],
+  "implementation_recommendations": [
+    "Establish pilot programs in 2-3 locations using the top recommended plant species",
+    "Implement seasonal planting strategies to ensure year-round pollinator support",
+    "Monitor bee populations quarterly using standardized sampling protocols",
+    "Consider site-specific factors when selecting from recommended plant species",
+    "Maintain diverse plant communities rather than monocultures for optimal results"
+  ]
+}

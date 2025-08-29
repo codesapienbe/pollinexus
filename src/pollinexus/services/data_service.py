@@ -23,7 +23,64 @@ class DataService:
     
     def __init__(self):
         self.supported_formats = ['.csv', '.xlsx', '.xls', '.parquet']
+        # Canonical-to-source column mapping aligned with pollinexus-v2 notebook
+        self.column_mapping: Dict[str, str] = {
+            'plant_species': 'plant species',
+            'bee_species': 'Species',
+            'season': 'season',
+            'site': 'site',
+            'native_or_non': 'plot',
+            'sampling': 'sampling',
+            'date': 'date',
+            'start_time': 'start time',
+            'end_time': 'end time',
+            'sex': 'Sex',
+            'parasitic': 'parasitic',
+            'nesting': 'nesting',
+            'nonnative_bee': 'non-native bee',
+            'bees_num': 'no of specimens in sample'
+        }
         logger.info("DataService initialized", extra={"supported_formats": self.supported_formats})
+    
+    def _normalize_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Normalize incoming dataset columns to canonical schema expected by the codebase.
+        Falls back gracefully if some source columns are missing.
+        """
+        try:
+            normalized = data.copy()
+            # Rename columns where source exists
+            rename_map: Dict[str, str] = {}
+            for canonical, source in self.column_mapping.items():
+                if source in normalized.columns and canonical not in normalized.columns:
+                    rename_map[source] = canonical
+            if rename_map:
+                logger.debug(
+                    "Applying column normalization",
+                    extra={"rename_map": rename_map, "operation": "data_load"}
+                )
+                normalized = normalized.rename(columns=rename_map)
+            # Ensure expected dtypes for key columns if present
+            if 'bees_num' in normalized.columns:
+                normalized['bees_num'] = pd.to_numeric(normalized['bees_num'], errors='coerce')
+            if 'date' in normalized.columns:
+                normalized['date'] = pd.to_datetime(normalized['date'], errors='coerce')
+            # Derive convenience flags if possible
+            if 'native_or_non' in normalized.columns and 'native_or_non' in normalized:
+                pass  # preserved as-is for downstream features
+            # Map nonnative indicator consistency: ensure numeric 0/1 if available
+            if 'nonnative_bee' in normalized.columns:
+                # Many datasets use 0/1 already, but coerce strings like '0','1','NA'
+                normalized['nonnative_bee'] = (
+                    pd.to_numeric(normalized['nonnative_bee'], errors='coerce')
+                )
+            return normalized
+        except Exception as e:
+            logger.error(
+                "Column normalization failed",
+                extra={"error": str(e), "operation": "data_load"}
+            )
+            return data
     
     @monitor_performance("data_load")
     @track_errors("data_load")
@@ -78,6 +135,9 @@ class DataService:
                 )
                 raise ValueError(f"Unsupported file format: {path.suffix}")
             
+            # Normalize to canonical schema
+            data = self._normalize_columns(data)
+            
             load_time = time.time() - start_time
             
             logger.info(
@@ -127,12 +187,10 @@ class DataService:
         }
         
         try:
-            # Check required columns
+            # Check required canonical columns (aligned with notebook mapping)
             required_columns = [
-                'sample_id', 'bees_num', 'date', 'season', 'site',
-                'native_or_non', 'sampling', 'plant_species', 'time',
-                'bee_species', 'sex', 'specialized_on', 'parasitic',
-                'nesting', 'status', 'nonnative_bee'
+                'bees_num', 'date', 'season', 'site',
+                'plant_species', 'bee_species', 'nonnative_bee'
             ]
             
             missing_columns = [col for col in required_columns if col not in data.columns]
@@ -153,7 +211,7 @@ class DataService:
             if 'date' in data.columns:
                 try:
                     pd.to_datetime(data['date'], errors='raise')
-                except:
+                except Exception:
                     type_issues.append("date should be parseable as datetime")
                     validation_result['warnings'].append("date should be parseable as datetime")
             
@@ -192,9 +250,9 @@ class DataService:
             range_issues = []
             if 'bees_num' in data.columns:
                 bees_num_stats = data['bees_num'].describe()
-                if bees_num_stats['min'] < 0:
+                if bees_num_stats.get('min', 0) < 0:
                     range_issues.append("bees_num contains negative values")
-                if bees_num_stats['max'] > 1000:  # Reasonable upper limit
+                if bees_num_stats.get('max', 0) > 100000:  # Conservative upper limit for large datasets
                     range_issues.append("bees_num contains unusually high values")
                 
                 validation_result['info']['bees_num_stats'] = bees_num_stats.to_dict()
@@ -268,25 +326,29 @@ class DataService:
             
             # Convert data types
             if 'bees_num' in cleaned_data.columns:
-                logger.debug("Converting bees_num to numeric", operation="data_cleaning")
+                logger.debug("Converting bees_num to numeric", extra={"operation": "data_cleaning"})
                 cleaned_data['bees_num'] = pd.to_numeric(cleaned_data['bees_num'], errors='coerce')
                 cleaning_steps.append("converted_bees_num_to_numeric")
             
             if 'date' in cleaned_data.columns:
-                logger.debug("Converting date to datetime", operation="data_cleaning")
+                logger.debug("Converting date to datetime", extra={"operation": "data_cleaning"})
                 cleaned_data['date'] = pd.to_datetime(cleaned_data['date'], errors='coerce')
                 cleaning_steps.append("converted_date_to_datetime")
             
             # Handle missing values
-            logger.debug("Handling missing values", operation="data_cleaning")
-            cleaned_data['plant_species'] = cleaned_data['plant_species'].fillna('None')
-            cleaned_data['specialized_on'] = cleaned_data['specialized_on'].fillna('Unknown')
+            logger.debug("Handling missing values", extra={"operation": "data_cleaning"})
+            if 'plant_species' in cleaned_data.columns:
+                cleaned_data['plant_species'] = cleaned_data['plant_species'].fillna('None')
+            if 'nonnative_bee' in cleaned_data.columns:
+                cleaned_data['nonnative_bee'] = cleaned_data['nonnative_bee'].fillna(0)
+            if 'parasitic' in cleaned_data.columns:
+                cleaned_data['parasitic'] = cleaned_data['parasitic'].fillna(0)
             cleaning_steps.append("filled_missing_values")
             
             # Remove duplicates
             original_duplicates = cleaned_data.duplicated().sum()
             if original_duplicates > 0:
-                logger.debug("Removing duplicate rows", duplicate_count=original_duplicates, operation="data_cleaning")
+                logger.debug("Removing duplicate rows", extra={"duplicate_count": int(original_duplicates), "operation": "data_cleaning"})
                 cleaned_data = cleaned_data.drop_duplicates()
                 cleaning_steps.append("removed_duplicates")
             
@@ -304,7 +366,14 @@ class DataService:
                 if outliers_count > 0:
                     logger.debug(
                         "Handling outliers in bees_num",
-                        extra={"outliers_count": int(outliers_count), "lower_bound": float(lower_bound), "upper_bound": float(upper_bound), "operation": "data_cleaning"}
+                        extra={
+                            "operation": "data_cleaning",
+                            "context": {
+                                "outliers_count": int(outliers_count),
+                                "lower_bound": float(lower_bound),
+                                "upper_bound": float(upper_bound)
+                            }
+                        }
                     )
                     # Cap outliers instead of removing them
                     cleaned_data.loc[cleaned_data['bees_num'] < lower_bound, 'bees_num'] = lower_bound
@@ -315,8 +384,8 @@ class DataService:
             text_columns = ['bee_species', 'plant_species', 'site', 'season']
             for col in text_columns:
                 if col in cleaned_data.columns:
-                    logger.debug(f"Standardizing {col}", operation="data_cleaning")
-                    cleaned_data[col] = cleaned_data[col].astype(str).str.strip().str.title()
+                    logger.debug(f"Standardizing {col}", extra={"operation": "data_cleaning"})
+                    cleaned_data[col] = cleaned_data[col].astype(str).str.strip()
             
             cleaning_steps.append("standardized_text_columns")
             
@@ -337,8 +406,7 @@ class DataService:
             
             logger.info(
                 "Dataset cleaning completed successfully",
-                **cleaning_stats,
-                operation="data_cleaning"
+                extra={**cleaning_stats, "operation": "data_cleaning"}
             )
             
             return cleaned_data
@@ -364,9 +432,7 @@ class DataService:
         """
         logger.info(
             "Generating dataset information",
-            rows=len(data),
-            columns=len(data.columns),
-            operation="dataset_info"
+            extra={"rows": len(data), "columns": len(data.columns), "operation": "dataset_info"}
         )
         
         try:
@@ -416,11 +482,13 @@ class DataService:
             
             logger.info(
                 "Dataset information generated successfully",
-                total_records=info['total_records'],
-                total_columns=info['total_columns'],
-                memory_usage_mb=info['memory_usage_mb'],
-                completeness_percentage=info['quality_metrics']['completeness'],
-                operation="dataset_info"
+                extra={
+                    "total_records": info['total_records'],
+                    "total_columns": info['total_columns'],
+                    "memory_usage_mb": info['memory_usage_mb'],
+                    "completeness_percentage": info['quality_metrics']['completeness'],
+                    "operation": "dataset_info"
+                }
             )
             
             return info
@@ -480,8 +548,7 @@ class DataService:
             
             logger.info(
                 "Dataset export completed successfully",
-                **export_info,
-                operation="data_export"
+                extra={**export_info, "operation": "data_export"}
             )
             
             return export_info

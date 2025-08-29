@@ -56,24 +56,49 @@ class DuckDBService:
             table_name: Name for the table (defaults to filename without extension)
             
         Returns:
-            str: Table name used
+            str: Canonical view name used
         """
         if table_name is None:
             table_name = Path(csv_path).stem
         
         try:
-            # Create table from CSV with automatic schema inference
-            query = f"""
-            CREATE TABLE IF NOT EXISTS {table_name} AS 
+            # Create raw table from CSV with automatic schema inference
+            create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {table_name}_raw AS 
             SELECT * FROM read_csv_auto('{csv_path}')
             """
-            self.connection.execute(query)
+            self.connection.execute(create_table_query)
             
-            # Get row count
-            count = self.connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-            logger.info(f"Loaded {count} rows from {csv_path} into table {table_name}")
+            # Create a canonical view with aliased columns expected by analysis
+            canonical_view = f"{table_name}_canonical"
+            self.connection.execute(f"DROP VIEW IF EXISTS {canonical_view}")
+            alias_query = f"""
+            CREATE VIEW {canonical_view} AS
+            SELECT 
+                COALESCE("plant species", plant_species) AS plant_species,
+                COALESCE("Species", bee_species) AS bee_species,
+                COALESCE(season, season) AS season,
+                COALESCE(site, site) AS site,
+                COALESCE(plot, native_or_non) AS native_or_non,
+                COALESCE(sampling, sampling) AS sampling,
+                COALESCE(date, date) AS date,
+                COALESCE("start time", start_time) AS start_time,
+                COALESCE("end time", end_time) AS end_time,
+                COALESCE("Sex", sex) AS sex,
+                COALESCE(parasitic, parasitic) AS parasitic,
+                COALESCE(nesting, nesting) AS nesting,
+                COALESCE("non-native bee", nonnative_bee) AS nonnative_bee,
+                COALESCE("no of specimens in sample", bees_num) AS bees_num,
+                *
+            FROM {table_name}_raw
+            """
+            self.connection.execute(alias_query)
             
-            return table_name
+            # Get row count from view
+            count = self.connection.execute(f"SELECT COUNT(*) FROM {canonical_view}").fetchone()[0]
+            logger.info(f"Loaded {count} rows from {csv_path} into view {canonical_view}")
+            
+            return canonical_view
             
         except Exception as e:
             logger.error(f"Error loading CSV {csv_path}: {e}")

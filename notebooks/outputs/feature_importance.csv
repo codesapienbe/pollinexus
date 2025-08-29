@@ -1,0 +1,7 @@
+feature,importance,feature_readable
+time_encoded,0.4589707738972927,Time of Day
+plant_encoded,0.392430966853643,Plant Species
+is_native_plot,0.05304131613763724,Native Plot
+site_encoded,0.05193675671149198,Site Location
+is_early_season,0.02217248932413211,Early Season
+season_encoded,0.021447697075803077,Season
