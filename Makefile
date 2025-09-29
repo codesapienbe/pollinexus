@@ -267,6 +267,8 @@ help:
 	@echo "  build       - Build the application and generate PDFs"
 	@echo "  train       - Train ML models"
 	@echo "  run         - Run the application"
+	@echo "  stop        - Stop running services (local only)"
+	@echo "  status      - Check service status (local only)"
 	@echo "  clean       - Clean build artifacts"
 	@echo "  verify      - Run tests, linting, formatting"
 	@echo ""
@@ -308,6 +310,22 @@ run-%:
 	@echo "$(BLUE)Running for environment: $*$(NC)"
 	@$(MAKE) run-$*
 
+stop:
+	@echo "$(BLUE)Stopping for environment: $(ENV)$(NC)"
+	@$(MAKE) stop-$(ENV)
+
+stop-%:
+	@echo "$(BLUE)Stopping for environment: $*$(NC)"
+	@$(MAKE) stop-$*
+
+status:
+	@echo "$(BLUE)Status for environment: $(ENV)$(NC)"
+	@$(MAKE) status-$(ENV)
+
+status-%:
+	@echo "$(BLUE)Status for environment: $*$(NC)"
+	@$(MAKE) status-$*
+
 verify:
 	@echo "$(BLUE)Verifying for environment: $(ENV)$(NC)"
 	@$(MAKE) verify-$(ENV)
@@ -345,17 +363,70 @@ run-local:
 		echo "$(RED)uv is not installed. Please install uv first.$(NC)"; \
 		exit 1; \
 	fi
+	@echo "$(GREEN)Verifying Jupyter installation...$(NC)"
+	@$(UV) run python -c "import jupyter; print('✓ Jupyter available')" 2>/dev/null || (echo "$(RED)✗ Jupyter not found. Installing...$(NC)" && $(UV) add jupyterlab)
 	@$(call ensure-redis)
-	@echo "$(GREEN)Starting FastAPI server...$(NC)"
+	@echo "$(GREEN)Starting FastAPI server in background...$(NC)"
 	@POLLINEXUS_DISABLE_SECURITY_FOR_LOCAL=true $(UV) run uvicorn pollinexus.api.main:app \
 		--host $(DEV_HOST) \
 		--port $(DEV_PORT) \
 		$(if $(filter true,$(DEV_RELOAD)),--reload) \
-		--workers $(DEV_WORKERS) & \
-		echo "$(GREEN)Starting Jupyter Lab for notebooks...$(NC)"; \
-		$(UV) run jupyter lab --no-browser --NotebookApp.token='' --NotebookApp.password='' --ip=$(DEV_HOST) --port=8888 --notebook-dir=src/pollinexus/notebook
-	@echo "$(GREEN)Application running at http://$(DEV_HOST):$(DEV_PORT)$(NC)"
+		--workers $(DEV_WORKERS) > api.log 2>&1 & \
+		echo $$! > api.pid
+	@sleep 2
+	@echo "$(GREEN)Starting Jupyter Lab for notebooks...$(NC)"
+	@$(UV) run jupyter lab --no-browser --NotebookApp.token='' --NotebookApp.password='' --ip=$(DEV_HOST) --port=8888 --notebook-dir=notebooks > jupyter.log 2>&1 & \
+		echo $$! > jupyter.pid
+	@sleep 3
+	@echo "$(GREEN)Services started successfully!$(NC)"
+	@echo "$(GREEN)FastAPI running at http://$(DEV_HOST):$(DEV_PORT)$(NC)"
 	@echo "$(GREEN)Jupyter Lab running at http://$(DEV_HOST):8888$(NC)"
+	@echo "$(YELLOW)Logs: api.log (FastAPI) and jupyter.log (Jupyter)$(NC)"
+	@echo "$(YELLOW)To stop services: make stop-local$(NC)"
+	@echo "$(YELLOW)To check status: make status-local$(NC)"
+
+status-local:
+	@echo "$(BLUE)Checking local service status...$(NC)"
+	@if [ -f api.pid ] && kill -0 $$(cat api.pid) 2>/dev/null; then \
+		echo "$(GREEN)✓ FastAPI server is running (PID: $$(cat api.pid))$(NC)"; \
+		echo "$(BLUE)  URL: http://$(DEV_HOST):$(DEV_PORT)$(NC)"; \
+		if [ -f api.log ]; then \
+			echo "$(BLUE)  Log: api.log$(NC)"; \
+		fi; \
+	else \
+		echo "$(RED)✗ FastAPI server is not running$(NC)"; \
+		if [ -f api.log ]; then \
+			echo "$(YELLOW)  Check api.log for errors$(NC)"; \
+		fi; \
+	fi
+	@if [ -f jupyter.pid ] && kill -0 $$(cat jupyter.pid) 2>/dev/null; then \
+		echo "$(GREEN)✓ Jupyter Lab is running (PID: $$(cat jupyter.pid))$(NC)"; \
+		echo "$(BLUE)  URL: http://$(DEV_HOST):8888$(NC)"; \
+		if [ -f jupyter.log ]; then \
+			echo "$(BLUE)  Log: jupyter.log$(NC)"; \
+		fi; \
+	else \
+		echo "$(RED)✗ Jupyter Lab is not running$(NC)"; \
+		if [ -f jupyter.log ]; then \
+			echo "$(YELLOW)  Check jupyter.log for errors$(NC)"; \
+		fi; \
+	fi
+
+stop-local:
+	@echo "$(GREEN)Stopping local services...$(NC)"
+	@if [ -f api.pid ]; then \
+		kill $$(cat api.pid) 2>/dev/null || true; \
+		rm -f api.pid; \
+		echo "$(GREEN)FastAPI server stopped$(NC)"; \
+	fi
+	@if [ -f jupyter.pid ]; then \
+		kill $$(cat jupyter.pid) 2>/dev/null || true; \
+		rm -f jupyter.pid; \
+		echo "$(GREEN)Jupyter Lab stopped$(NC)"; \
+	fi
+	@echo "$(GREEN)All local services stopped$(NC)"
+
+
 
 verify-local:
 	@echo "$(GREEN)Running comprehensive verification locally...$(NC)"
@@ -384,6 +455,15 @@ run-docker:
 	@echo "$(GREEN)Running application with Docker...$(NC)"
 	@$(DOCKER_COMPOSE) up --build
 	@echo "$(GREEN)Docker application stopped.$(NC)"
+
+stop-docker:
+	@echo "$(GREEN)Stopping Docker services...$(NC)"
+	@$(DOCKER_COMPOSE) down
+	@echo "$(GREEN)Docker services stopped$(NC)"
+
+status-docker:
+	@echo "$(GREEN)Checking Docker service status...$(NC)"
+	@$(DOCKER_COMPOSE) ps
 
 verify-docker:
 	@echo "$(GREEN)Running verification with Docker...$(NC)"
@@ -414,6 +494,15 @@ run-remote:
 	@$(call vagrant-up)
 	@echo "$(GREEN)Starting FastAPI server in VM...$(NC)"
 	@$(VAGRANT) ssh -c "cd /vagrant && uv run uvicorn pollinexus.api.main:app --host 0.0.0.0 --port $(DEV_PORT) --reload"
+
+stop-remote:
+	@echo "$(GREEN)Stopping remote VM...$(NC)"
+	@$(VAGRANT) halt
+	@echo "$(GREEN)Remote VM stopped$(NC)"
+
+status-remote:
+	@echo "$(GREEN)Checking remote VM status...$(NC)"
+	@$(VAGRANT) status
 
 verify-remote:
 	@echo "$(GREEN)Running verification in remote VM...$(NC)"
@@ -452,6 +541,7 @@ clean-local:
 	@find . -type f -name "*.pyc" -delete
 	@rm -f pollinexus.db
 	@rm -f *.db
+	@rm -f api.pid jupyter.pid api.log jupyter.log
 	@echo "$(GREEN)Local clean complete!$(NC)"
 
 clean-docker:
